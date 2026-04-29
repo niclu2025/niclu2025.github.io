@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>展会观众数据模拟工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+      <!-- 添加SheetJS库用于Excel文件生成 -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    
+    <script>
+        // 原始数据统计信息
+        const originalDataStats = {
+            gender: { '男': 266, '女': 234 },
+            age: { '18岁以下': 24,'18-25岁': 52,'26-35岁': 203, '36-45岁': 145, '46-55岁': 58,'56岁以上': 15 },
+            occupation: { '学生': 20, '市场/销售/商务': 102, '技术开发/工程师': 46, '自由职业': 44, '产品/运营人员': 42, '采购': 36, '服务业人员': 35, '工人劳动者': 31, '离休/退休': 15, '老师': 8, '人力': 8, '个体经营者': 5, '行政': 1, '农林牧渔劳动者': 1, '企业管理者': 1, '党政机关人员': 1, '律师/法务': 1, '设计从业者': 1, '科研人员': 1, '医护人员': 0 },
+           region: { 
+  '北京': 88,
+  '天津': 162,
+  '河北': 100,
+  '山西': 45,
+  '内蒙古': 7,
+  '辽宁': 0,
+  '吉林': 8,
+  '黑龙江': 0,
+  '上海': 0,
+  '江苏': 0,
+  '浙江': 0,
+  '安徽': 0,
+  '福建': 0,
+  '江西': 0,
+  '山东': 43,
+  '河南': 28,
+  '湖北': 0,
+  '湖南': 0,
+  '广东': 0,
+  '广西': 0,
+  '海南': 0,
+  '重庆': 0,
+  '四川': 0,
+  '贵州': 0,
+  '云南': 0,
+  '西藏': 0,
+  '陕西': 0,
+  '甘肃': 0,
+  '青海': 0,
+  '宁夏': 0,
+  '新疆': 0,
+  '台湾': 0,
+  '香港': 0,
+  '澳门': 0
+}
+        };
+
+        // 计算占比数据
+        const calcRatios = (data) => {
+            const total = Object.values(data).reduce((a, b) => a + b, 0);
+            return Object.fromEntries(Object.entries(data).map(([k, v]) => [k, Math.round(v / total * 100)]));
+        };
+
+        const originalRegionRatios = calcRatios(originalDataStats.region);
+        const originalOccupationRatios = calcRatios(originalDataStats.occupation);
+
+        // 多选题默认占比
+        const defaultMultiSelectRatios = {
+            channels: { '互联网': 65, '朋友/同事推荐': 28, '电视/广播': 18, '报纸/杂志': 10, '其他': 14 },
+            purposes: { '了解行业动态': 60, '寻找合作机会': 23, '采购产品/服务': 17, '学习新知识/技能': 25, '休闲娱乐': 14, '其他': 8 },
+            foodTypes: { '高档餐厅': 5, '中档餐厅': 12, '快餐': 18, '外卖': 6, '其他': 35 },
+            accommodations: { '星级酒店': 10, '经济型酒店': 30, '民宿': 15, '亲朋家中': 11, '未住宿': 38 },
+            transportations: { '私家车': 38, '公交/地铁': 15, '飞机/高铁': 7, '网约车': 8, '出租车': 4, '其他': 3 }
+        };
+
+        // 消费范围与展会选项
+        const consumptionRanges = {
+            food: ['100以内', '100~300', '300~500', '500~1000', '其他'],
+            accommodation: ['300以内', '300~500', '500~800', '800~2000', '其他'],
+            transportation: ['100以内', '100~300', '300~500', '500~1000', '1000~3000','其他'],
+            travel: ['无参观计划', '100以内', '100~300', '300~500', '其他'],
+            training: ['无参加计划', '100以内', '100~300', '300~500', '500~2000', '其他'],
+            shopping: ['无光顾计划', '100以内', '100~300', '300~500', '500~1000', '其他'],
+            entertainment: ['无参加计划', '100以内', '100~300', '300~500', '500~800', '其他'],
+            economicImpact: ['是', '否'],
+            employmentImpact: ['是', '否'],
+            serviceSatisfaction: ['非常满意', '满意', '一般', '不满意', '非常不满意'],
+            businessIntention: ['是', '否'],
+            // 新增4个选项
+            purchaseExpenditure: ['无购买计划', '500以内', '500-1000', '1000-2000', '2000-5000', '5000-10000', '10000-20000', '20000-50000', '50000以上'],
+            productTrendAwareness: ['是', '否'],
+            businessPartnerAcquisition: ['是', '否'],
+            similarExhibitionAttendance: ['是', '否']
+        };
+
+        // 自定义消费占比初始值
+        const defaultConsumptionRatios = {
+            food: { '100以内': 35, '100~300': 25, '300~500': 15, '500~1000': 15, '其他': 10 },
+            accommodation: { '300以内': 35, '300~500': 25, '500~800': 15, '800~2000': 15, '其他': 10 },
+            transportation: { '100以内': 35, '100~300': 25, '300~500': 20, '500~1000': 10, '1000~3000': 5, '其他': 5 },
+            travel: { '无参观计划': 36, '100以内': 18, '100~300': 16, '300~500': 12, '其他': 18 },
+            training: { '无参加计划': 45, '100以内': 15, '100~300': 12, '300~500': 10, '500~2000': 5, '其他': 13 },
+            shopping: { '无光顾计划': 35, '100以内': 18, '100~300': 12, '300~500': 13, '500~1000': 10, '其他': 12 },
+            entertainment: { '无参加计划': 32, '100以内': 18, '100~300': 12, '300~500': 13, '500~800': 10, '其他': 15 },
+            // 新增4个选项的默认占比
+             economicImpact: { '是': 85, '否': 15 },
+             employmentImpact: { '是': 88, '否': 12 },
+             serviceSatisfaction: { '非常满意': 65, '满意': 20, '一般': 10, '不满意': 5, '非常不满意': 0},
+             businessIntention: { '是': 65, '否': 35 },
+             // 新增4个选项的默认占比
+             purchaseExpenditure: { '无购买计划': 40, '500以内': 15, '500~1000': 15, '1000~2000': 10, '2000~5000': 5, '5000~10000': 5, '10000~20000': 7, '20000~50000': 3, '50000以上': 0 },
+             productTrendAwareness: { '是': 75, '否': 25 },
+             businessPartnerAcquisition: { '是': 90, '否': 10 },
+             similarExhibitionAttendance: { '是': 85, '否': 15 } 
+        };
+
+        const exhibitionOptions = {
+            channels: ['互联网', '朋友/同事推荐', '电视/广播', '报纸/杂志', '其他'],
+            purposes: ['了解行业动态', '寻找合作机会', '采购产品/服务', '学习新知识/技能', '休闲娱乐', '其他'],
+            foodTypes: ['高档餐厅', '中档餐厅', '快餐', '外卖', '其他'],
+            accommodations: ['星级酒店', '经济型酒店', '民宿', '亲朋家中', '未住宿'],
+            transportations: ['私家车', '公交/地铁', '飞机/高铁', '网约车', '出租车', '其他']
+        };
+    </script>
+</head>
+<body class="bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- 标题区域 -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">
+                <i class="fas fa-chart-pie text-purple-600 mr-3"></i>
+                展会观众数据模拟工具
+            </h1>
+            <p class="text-lg text-gray-600 max-w-3xl mx-auto">
+                自主调整各项参数占比，实时生成符合需求的模拟观众数据
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- 左侧：参数设置面板 -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-2xl shadow-xl p-6 sticky top-8">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                        <i class="fas fa-sliders-h text-blue-600 mr-3"></i>
+                        参数设置
+                    </h2>
+
+                    <!-- 样本数量设置 -->
+                    <div class="mb-8">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-users text-green-600 mr-2"></i>
+                            样本数量
+                        </label>
+                        <div class="flex items-center">
+                            <button class="decrement-btn w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-l-lg transition-colors" data-target="sampleSize">
+                                <i class="fas fa-minus text-gray-600"></i>
+                            </button>
+                            <input type="range" id="sampleSize" min="100" max="20000" step="100" value="500"
+                                class="w-full h-8 bg-gray-200 rounded-none appearance-none cursor-pointer">
+                            <span id="sampleSizeValue" class="w-16 h-8 flex items-center justify-center bg-gray-100 text-sm font-semibold text-gray-800">500</span>
+                            <button class="increment-btn w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-r-lg transition-colors" data-target="sampleSize">
+                                <i class="fas fa-plus text-gray-600"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 性别分布设置 -->
+                    <div class="mb-8">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-venus-mars text-pink-600 mr-2"></i>
+                            性别分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex items-center">
+                                <span class="text-sm text-gray-700 w-16">男性</span>
+                                <button class="decrement-btn w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-l-lg transition-colors" data-target="maleRatio">
+                                    <i class="fas fa-minus text-gray-600"></i>
+                                </button>
+                                <input type="range" id="maleRatio" min="0" max="100" step="1" value="53"
+                                    class="w-full h-8 bg-gray-200 rounded-none appearance-none cursor-pointer">
+                                <span id="maleRatioValue" class="w-12 h-8 flex items-center justify-center bg-gray-100 text-sm font-semibold text-gray-800">53%</span>
+                                <button class="increment-btn w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-r-lg transition-colors" data-target="maleRatio">
+                                    <i class="fas fa-plus text-gray-600"></i>
+                                </button>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="text-sm text-gray-700 w-16">女性</span>
+                                <button class="decrement-btn w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-l-lg transition-colors" data-target="femaleRatio">
+                                    <i class="fas fa-minus text-gray-600"></i>
+                                </button>
+                                <input type="range" id="femaleRatio" min="0" max="100" step="1" value="47"
+                                    class="w-full h-8 bg-gray-200 rounded-none appearance-none cursor-pointer">
+                                <span id="femaleRatioValue" class="w-12 h-8 flex items-center justify-center bg-gray-100 text-sm font-semibold text-gray-800">47%</span>
+                                <button class="increment-btn w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-r-lg transition-colors" data-target="femaleRatio">
+                                    <i class="fas fa-plus text-gray-600"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 动态生成的滑块容器 -->
+                    <div class="mb-8" id="ageSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-birthday-cake text-orange-600 mr-2"></i>
+                            年龄分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="ageSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="ageTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="occupationSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-briefcase text-teal-600 mr-2"></i>
+                            职业分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar" id="occupationSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="occupationTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="regionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-map-marker-alt text-red-600 mr-2"></i>
+                            地区分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar" id="regionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="regionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+                       <!-- 多选题滑块容器 -->
+                    <div id="multiSelectSlidersContainer"></div>
+                    <!-- 消费占比设置区域 -->
+                    <div class="mb-8" id="foodConsumptionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-utensils text-yellow-600 mr-2"></i>
+                            餐饮消费分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="foodConsumptionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="foodConsumptionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="accommodationConsumptionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-bed text-indigo-600 mr-2"></i>
+                            住宿消费分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="accommodationConsumptionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="accommodationConsumptionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="transportationConsumptionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-car text-green-600 mr-2"></i>
+                            交通消费分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="transportationConsumptionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="transportationConsumptionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+                 
+                 
+                    
+                    <!-- 旅游/培训/购物/娱乐支出占比设置 -->
+                    <div class="mb-8" id="travelConsumptionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-plane-departure text-sky-600 mr-2"></i>
+                            旅游支出分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="travelConsumptionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="travelConsumptionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="trainingConsumptionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-graduation-cap text-blue-600 mr-2"></i>
+                            培训支出分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="trainingConsumptionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="trainingConsumptionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="shoppingConsumptionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-shopping-bag text-pink-600 mr-2"></i>
+                            购物支出分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="shoppingConsumptionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="shoppingConsumptionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="entertainmentConsumptionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-film text-amber-600 mr-2"></i>
+                            娱乐支出分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="entertainmentConsumptionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="entertainmentConsumptionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+                       <!-- 新增4个选项的滑块容器 -->
+                    <div class="mb-8" id="economicImpactSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-chart-line text-green-600 mr-2"></i>
+                            经济推动作用分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="economicImpactSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="economicImpactTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="employmentImpactSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-users text-blue-600 mr-2"></i>
+                            带动就业作用分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="employmentImpactSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="employmentImpactTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="serviceSatisfactionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-smile text-yellow-600 mr-2"></i>
+                            服务满意度分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="serviceSatisfactionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="serviceSatisfactionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-8" id="businessIntentionSliderContainer">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <i class="fas fa-handshake text-purple-600 mr-2"></i>
+                            业务合作意向分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+                        </h3>
+                        <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="businessIntentionSlidersContainer"></div>
+                        <div class="mt-2 text-xs text-gray-500 text-right">
+                            <span id="businessIntentionTotal">总比例: 100%</span>
+                        </div>
+                    </div>
+                    <!-- 新增4个选项的滑块容器 -->
+<div class="mb-8" id="purchaseExpenditureSliderContainer">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+        <i class="fas fa-shopping-cart text-green-600 mr-2"></i>
+        实际购买支出分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+    </h3>
+    <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="purchaseExpenditureSlidersContainer"></div>
+    <div class="mt-2 text-xs text-gray-500 text-right">
+        <span id="purchaseExpenditureTotal">总比例: 100%</span>
+    </div>
+</div>
+
+<div class="mb-8" id="productTrendAwarenessSliderContainer">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+        <i class="fas fa-chart-line text-blue-600 mr-2"></i>
+        了解产品趋势分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+    </h3>
+    <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="productTrendAwarenessSlidersContainer"></div>
+    <div class="mt-2 text-xs text-gray-500 text-right">
+        <span id="productTrendAwarenessTotal">总比例: 100%</span>
+    </div>
+</div>
+
+<div class="mb-8" id="businessPartnerAcquisitionSliderContainer">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+        <i class="fas fa-handshake text-purple-600 mr-2"></i>
+        结识业务伙伴分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+    </h3>
+    <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="businessPartnerAcquisitionSlidersContainer"></div>
+    <div class="mt-2 text-xs text-gray-500 text-right">
+        <span id="businessPartnerAcquisitionTotal">总比例: 100%</span>
+    </div>
+</div>
+
+<div class="mb-8" id="similarExhibitionAttendanceSliderContainer">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+        <i class="fas fa-building text-orange-600 mr-2"></i>
+        参加同类展会分布 <span class="text-xs font-normal text-gray-500 ml-2">(单选，总和100%)</span>
+    </h3>
+    <div class="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="similarExhibitionAttendanceSlidersContainer"></div>
+    <div class="mt-2 text-xs text-gray-500 text-right">
+        <span id="similarExhibitionAttendanceTotal">总比例: 100%</span>
+    </div>
+</div>
+                    <!-- 生成按钮 -->
+                    <button id="generateBtn" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-300">
+                        <i class="fas fa-magic mr-2"></i>
+                        生成模拟数据
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右侧：结果展示区域 -->
+            <div class="lg:col-span-2 space-y-8">
+                <!-- 数据概览卡片 -->
+                <div class="bg-white rounded-2xl shadow-xl p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                        <i class="fas fa-chart-bar text-green-600 mr-3"></i>
+                        数据概览
+                    </h2>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl text-center">
+                            <div class="text-2xl font-bold text-blue-600" id="totalCount">500</div>
+                            <div class="text-sm text-gray-600">总样本数</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl text-center">
+                            <div class="text-2xl font-bold text-green-600" id="maleCount">265</div>
+                            <div class="text-sm text-gray-600">男性</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-pink-50 to-pink-100 p-4 rounded-xl text-center">
+                            <div class="text-2xl font-bold text-pink-600" id="femaleCount">235</div>
+                            <div class="text-sm text-gray-600">女性</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-xl text-center">
+                            <div class="text-2xl font-bold text-purple-600" id="mainAgeGroup">26-35岁</div>
+                            <div class="text-sm text-gray-600">主要年龄段</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-xl text-center">
+                            <div class="text-2xl font-bold text-red-600" id="mainRegion">天津</div>
+                            <div class="text-sm text-gray-600">主要地区</div>
+                        </div>
+                    </div>
+
+                    <!-- 图表区域 -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- 左侧列 -->
+    <!-- <div class="grid grid-cols-1 gap-6"> -->
+        <!-- 基础信息图表 -->
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">性别分布</h3>
+            <canvas id="genderChart" width="400" height="300"></canvas>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">年龄分布</h3>
+            <canvas id="ageChart" width="400" height="300"></canvas>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">职业分布</h3>
+            <canvas id="occupationChart" width="400" height="300"></canvas>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">地区分布</h3>
+            <canvas id="regionChart" width="400" height="300"></canvas>
+        </div>
+        <!-- 多选题分布图表（单独一行，3列布局） -->
+<!-- <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6"> -->
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">信息渠道分布</h3>
+        <canvas id="channelsChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">参观目的分布</h3>
+        <canvas id="purposesChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">餐饮类型分布</h3>
+        <canvas id="foodTypesChart" width="400" height="300"></canvas>
+    </div>
+     <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">餐饮消费分布</h3>
+            <canvas id="foodConsumptionChart" width="400" height="300"></canvas>
+        </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">住宿类型分布</h3>
+        <canvas id="accommodationsChart" width="400" height="300"></canvas>
+    </div>
+     <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">住宿消费分布</h3>
+            <canvas id="accommodationConsumptionChart" width="400" height="300"></canvas>
+        </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">交通类型分布</h3>
+        <canvas id="transportationsChart" width="400" height="300"></canvas>
+    </div>
+     <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">交通消费分布</h3>
+            <canvas id="transportationConsumptionChart" width="400" height="300"></canvas>
+        </div>
+<!-- </div> -->
+        
+        <!-- 继续消费分布图表 -->
+       
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">旅游支出分布</h3>
+            <canvas id="travelConsumptionChart" width="400" height="300"></canvas>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">培训支出分布</h3>
+            <canvas id="trainingConsumptionChart" width="400" height="300"></canvas>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">购物支出分布</h3>
+            <canvas id="shoppingConsumptionChart" width="400" height="300"></canvas>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">娱乐支出分布</h3>
+            <canvas id="entertainmentConsumptionChart" width="400" height="300"></canvas>
+        </div>
+    <!-- </div> -->
+</div>
+
+
+
+<!-- 新增选项图表区域 -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mt-6">
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">经济推动作用分布</h3>
+        <canvas id="economicImpactChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">带动就业作用分布</h3>
+        <canvas id="employmentImpactChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">服务满意度分布</h3>
+        <canvas id="serviceSatisfactionChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">业务合作意向分布</h3>
+        <canvas id="businessIntentionChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">实际购买支出分布</h3>
+        <canvas id="purchaseExpenditureChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">了解产品趋势分布</h3>
+        <canvas id="productTrendAwarenessChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">结识业务伙伴分布</h3>
+        <canvas id="businessPartnerAcquisitionChart" width="400" height="300"></canvas>
+    </div>
+    <div class="bg-gray-50 p-4 rounded-xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">参加同类展会分布</h3>
+        <canvas id="similarExhibitionAttendanceChart" width="400" height="300"></canvas>
+    </div>
+</div>
+                <!-- 样例数据表格 -->
+                <div class="bg-white rounded-2xl shadow-xl p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                        <i class="fas fa-table text-indigo-600 mr-3"></i>
+                        样例数据（完整字段）
+                    </h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full table-auto">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">性别</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">年龄</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">职业</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">地区</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">餐饮消费</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">住宿消费</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">交通消费</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sampleDataTable" class="bg-white divide-y divide-gray-200">
+                                <!-- 数据将通过JavaScript动态填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 数据下载区域 -->
+                <div class="bg-white rounded-2xl shadow-xl p-6 text-center">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4 flex items-center justify-center">
+                        <i class="fas fa-download text-teal-600 mr-3"></i>
+                        数据下载
+                    </h2>
+                    <p class="text-gray-600 mb-6">下载包含所有字段的完整模拟数据</p>
+                    <div class="flex flex-wrap justify-center gap-4">
+                        <button id="downloadCSV" class="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-bold py-2 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-green-300">
+                            <i class="fas fa-file-csv mr-2"></i>
+                            下载xlsx（完整字段）
+                        </button>
+                        <button id="downloadJSON" class="bg-gradient-to-br from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-bold py-2 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-orange-300">
+                            <i class="fas fa-file-code mr-2"></i>
+                            下载JSON（完整字段）
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局状态管理
+        const state = {
+            generatedData: [],
+            sliders: {
+                age: {},
+                occupation: {},
+                region: {},
+                foodConsumption: {},
+                accommodationConsumption: {},
+                transportationConsumption: {},
+                travelConsumption: {},
+                trainingConsumption: {},
+                shoppingConsumption: {},
+                entertainmentConsumption: {},
+                 economicImpact: {},
+                employmentImpact: {},
+                serviceSatisfaction: {},
+                businessIntention: {},
+                purchaseExpenditure: {},
+                productTrendAwareness: {},
+                businessPartnerAcquisition: {},
+                similarExhibitionAttendance: {},
+                multiSelect: {
+                    channels: {},
+                    purposes: {},
+                    foodTypes: {},
+                    accommodations: {},
+                    transportations: {}
+                }
+            },
+            values: {
+                age: {},
+                occupation: {},
+                region: {},
+                foodConsumption: {},
+                accommodationConsumption: {},
+                transportationConsumption: {},
+                travelConsumption: {},
+                trainingConsumption: {},
+                shoppingConsumption: {},
+                entertainmentConsumption: {},
+                // 新增4个选项
+                economicImpact: {},
+                employmentImpact: {},
+                serviceSatisfaction: {},
+                businessIntention: {},
+                purchaseExpenditure: {},
+                productTrendAwareness: {},
+                businessPartnerAcquisition: {},
+                similarExhibitionAttendance: {},
+                multiSelect: {
+                    channels: {},
+                    purposes: {},
+                    foodTypes: {},
+                    accommodations: {},
+                    transportations: {}
+                }
+            },
+            charts: {}
+        };
+
+        // DOM元素引用
+        const dom = {
+            sampleSize: document.getElementById('sampleSize'),
+            sampleSizeValue: document.getElementById('sampleSizeValue'),
+            maleRatio: document.getElementById('maleRatio'),
+            maleRatioValue: document.getElementById('maleRatioValue'),
+            femaleRatio: document.getElementById('femaleRatio'),
+            femaleRatioValue: document.getElementById('femaleRatioValue'),
+            generateBtn: document.getElementById('generateBtn'),
+            totalCount: document.getElementById('totalCount'),
+            maleCount: document.getElementById('maleCount'),
+            femaleCount: document.getElementById('femaleCount'),
+            mainAgeGroup: document.getElementById('mainAgeGroup'),
+            mainRegion: document.getElementById('mainRegion'),
+            sampleDataTable: document.getElementById('sampleDataTable'),
+            downloadCSV: document.getElementById('downloadCSV'),
+            downloadJSON: document.getElementById('downloadJSON'),
+            totals: {
+                age: document.getElementById('ageTotal'),
+                occupation: document.getElementById('occupationTotal'),
+                region: document.getElementById('regionTotal'),
+                foodConsumption: document.getElementById('foodConsumptionTotal'),
+                accommodationConsumption: document.getElementById('accommodationConsumptionTotal'),
+                transportationConsumption: document.getElementById('transportationConsumptionTotal'),
+                travelConsumption: document.getElementById('travelConsumptionTotal'),
+                trainingConsumption: document.getElementById('trainingConsumptionTotal'),
+                shoppingConsumption: document.getElementById('shoppingConsumptionTotal'),
+                entertainmentConsumption: document.getElementById('entertainmentConsumptionTotal'),
+                 // 新增4个选项
+                economicImpact: document.getElementById('economicImpactTotal'),
+                employmentImpact: document.getElementById('employmentImpactTotal'),
+                serviceSatisfaction: document.getElementById('serviceSatisfactionTotal'),
+                businessIntention: document.getElementById('businessIntentionTotal'),
+                purchaseExpenditure: document.getElementById('purchaseExpenditureTotal'),
+                productTrendAwareness: document.getElementById('productTrendAwarenessTotal'),
+                businessPartnerAcquisition: document.getElementById('businessPartnerAcquisitionTotal'),
+                similarExhibitionAttendance: document.getElementById('similarExhibitionAttendanceTotal')
+            },
+            containers: {
+                age: document.getElementById('ageSlidersContainer'),
+                occupation: document.getElementById('occupationSlidersContainer'),
+                region: document.getElementById('regionSlidersContainer'),
+                foodConsumption: document.getElementById('foodConsumptionSlidersContainer'),
+                accommodationConsumption: document.getElementById('accommodationConsumptionSlidersContainer'),
+                transportationConsumption: document.getElementById('transportationConsumptionSlidersContainer'),
+                travelConsumption: document.getElementById('travelConsumptionSlidersContainer'),
+                trainingConsumption: document.getElementById('trainingConsumptionSlidersContainer'),
+                shoppingConsumption: document.getElementById('shoppingConsumptionSlidersContainer'),
+                entertainmentConsumption: document.getElementById('entertainmentConsumptionSlidersContainer'),
+                 // 新增4个选项
+                economicImpact: document.getElementById('economicImpactSlidersContainer'),
+                employmentImpact: document.getElementById('employmentImpactSlidersContainer'),
+                serviceSatisfaction: document.getElementById('serviceSatisfactionSlidersContainer'),
+                businessIntention: document.getElementById('businessIntentionSlidersContainer'),
+                multiSelect: document.getElementById('multiSelectSlidersContainer'),
+                purchaseExpenditure: document.getElementById('purchaseExpenditureSlidersContainer'),
+                productTrendAwareness: document.getElementById('productTrendAwarenessSlidersContainer'),
+                businessPartnerAcquisition: document.getElementById('businessPartnerAcquisitionSlidersContainer'),
+                similarExhibitionAttendance: document.getElementById('similarExhibitionAttendanceSlidersContainer'),
+                multiSelect: document.getElementById('multiSelectSlidersContainer')
+            },
+            chartContainers: {
+                genderChart: document.getElementById('genderChart'),
+                ageChart: document.getElementById('ageChart'),
+                occupationChart: document.getElementById('occupationChart'),
+                regionChart: document.getElementById('regionChart'),
+                foodConsumptionChart: document.getElementById('foodConsumptionChart'),
+                accommodationConsumptionChart: document.getElementById('accommodationConsumptionChart'),
+                transportationConsumptionChart: document.getElementById('transportationConsumptionChart'),
+                channelsChart: document.getElementById('channelsChart'),
+                purposesChart: document.getElementById('purposesChart'),
+                foodTypesChart: document.getElementById('foodTypesChart'),
+                accommodationsChart: document.getElementById('accommodationsChart'),
+                transportationsChart: document.getElementById('transportationsChart'),
+                travelConsumptionChart: document.getElementById('travelConsumptionChart'),
+                trainingConsumptionChart: document.getElementById('trainingConsumptionChart'),
+                shoppingConsumptionChart: document.getElementById('shoppingConsumptionChart'),
+                entertainmentConsumptionChart: document.getElementById('entertainmentConsumptionChart'),
+                // 新增4个选项的图表容器
+               economicImpactChart: document.getElementById('economicImpactChart'),
+                employmentImpactChart: document.getElementById('employmentImpactChart'),
+                serviceSatisfactionChart: document.getElementById('serviceSatisfactionChart'),
+                businessIntentionChart: document.getElementById('businessIntentionChart'),
+                purchaseExpenditureChart: document.getElementById('purchaseExpenditureChart'),
+                productTrendAwarenessChart: document.getElementById('productTrendAwarenessChart'),
+                businessPartnerAcquisitionChart: document.getElementById('businessPartnerAcquisitionChart'),
+                similarExhibitionAttendanceChart: document.getElementById('similarExhibitionAttendanceChart')
+            }
+        };
+
+        // 通用滑块生成函数
+        const generateSliders = (type, data, container, isMulti = false, icon, title) => {
+            // 创建标题
+            if (title) {
+                const titleEl = document.createElement('div');
+                titleEl.className = "mb-8";
+                titleEl.innerHTML = `
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                        <i class="fas ${icon} mr-2"></i>
+                        ${title} <span class="text-xs font-normal text-gray-500 ml-2">(${isMulti ? '多选，总和不限' : '单选，总和100%'})</span>
+                    </h3>
+                `;
+                container.appendChild(titleEl);
+                container = titleEl;
+                const sliderContainer = document.createElement('div');
+                sliderContainer.className = "space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar";
+                container.appendChild(sliderContainer);
+                container = sliderContainer;
+            }
+
+            // 生成滑块
+            Object.entries(data).forEach(([key, value]) => {
+                const sliderId = `${type}_${key.replace(/[\/\s~]/g, '_')}`;
+                const sliderEl = document.createElement('div');
+                sliderEl.className = "flex items-center";
+                sliderEl.innerHTML = `
+                    <span class="text-xs text-gray-700 w-28 truncate">${key}</span>
+                    <button class="decrement-btn w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-l-lg transition-colors" data-target="${sliderId}">
+                        <i class="fas fa-minus text-gray-600 text-xs"></i>
+                    </button>
+                    <input type="range" id="${sliderId}" min="0" max="100" step="1" value="${value}"
+                        class="w-full h-6 bg-gray-200 rounded-none appearance-none cursor-pointer">
+                    <span id="${sliderId}Value" class="w-10 h-6 flex items-center justify-center bg-gray-100 text-xs font-semibold text-gray-800">${value}%</span>
+                    <button class="increment-btn w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-r-lg transition-colors" data-target="${sliderId}">
+                        <i class="fas fa-plus text-gray-600 text-xs"></i>
+                    </button>
+                `;
+                container.appendChild(sliderEl);
+
+                // 存储引用
+                if (isMulti) {
+                    state.sliders.multiSelect[type][key] = document.getElementById(sliderId);
+                    state.values.multiSelect[type][key] = document.getElementById(`${sliderId}Value`);
+                } else {
+                    state.sliders[type][key] = document.getElementById(sliderId);
+                    state.values[type][key] = document.getElementById(`${sliderId}Value`);
+                }
+
+                // 绑定事件
+                document.getElementById(sliderId).addEventListener('input', function() {
+                    const valEl = document.getElementById(`${sliderId}Value`);
+                    valEl.textContent = `${this.value}%`;
+                    if (!isMulti) updateTotal(type);
+                });
+            });
+        };
+
+        // 初始化所有滑块
+        const initSliders = () => {
+            // 年龄滑块
+            const ageData = Object.fromEntries(
+                Object.entries(originalDataStats.age).map(([k, v]) => [k, Math.round(v / 500 * 100)])
+            );
+            generateSliders('age', ageData, dom.containers.age);
+            updateTotal('age');
+
+            // 职业与地区滑块
+            generateSliders('occupation', originalOccupationRatios, dom.containers.occupation);
+            generateSliders('region', originalRegionRatios, dom.containers.region);
+            updateTotal('occupation');
+            updateTotal('region');
+
+            // 消费占比滑块
+            generateSliders('foodConsumption', defaultConsumptionRatios.food, dom.containers.foodConsumption);
+            generateSliders('accommodationConsumption', defaultConsumptionRatios.accommodation, dom.containers.accommodationConsumption);
+            generateSliders('transportationConsumption', defaultConsumptionRatios.transportation, dom.containers.transportationConsumption);
+            generateSliders('travelConsumption', defaultConsumptionRatios.travel, dom.containers.travelConsumption);
+            generateSliders('trainingConsumption', defaultConsumptionRatios.training, dom.containers.trainingConsumption);
+            generateSliders('shoppingConsumption', defaultConsumptionRatios.shopping, dom.containers.shoppingConsumption);
+            generateSliders('entertainmentConsumption', defaultConsumptionRatios.entertainment, dom.containers.entertainmentConsumption);
+            // 新增4个选项的滑块初始化
+            generateSliders('economicImpact', defaultConsumptionRatios.economicImpact, dom.containers.economicImpact);
+            generateSliders('employmentImpact', defaultConsumptionRatios.employmentImpact, dom.containers.employmentImpact);
+            generateSliders('serviceSatisfaction', defaultConsumptionRatios.serviceSatisfaction, dom.containers.serviceSatisfaction);
+            generateSliders('businessIntention', defaultConsumptionRatios.businessIntention, dom.containers.businessIntention);
+            generateSliders('purchaseExpenditure', defaultConsumptionRatios.purchaseExpenditure, dom.containers.purchaseExpenditure);
+            generateSliders('productTrendAwareness', defaultConsumptionRatios.productTrendAwareness, dom.containers.productTrendAwareness);
+            generateSliders('businessPartnerAcquisition', defaultConsumptionRatios.businessPartnerAcquisition, dom.containers.businessPartnerAcquisition);
+            generateSliders('similarExhibitionAttendance', defaultConsumptionRatios.similarExhibitionAttendance, dom.containers.similarExhibitionAttendance);
+            updateTotal('foodConsumption');
+            updateTotal('accommodationConsumption');
+            updateTotal('transportationConsumption');
+            updateTotal('travelConsumption');
+            updateTotal('trainingConsumption');
+            updateTotal('shoppingConsumption');
+            updateTotal('entertainmentConsumption');
+            // 新增4个选项的总比例更新
+            updateTotal('economicImpact');
+            updateTotal('employmentImpact');
+            updateTotal('serviceSatisfaction');
+            updateTotal('businessIntention');
+            updateTotal('purchaseExpenditure');
+            updateTotal('productTrendAwareness');
+            updateTotal('businessPartnerAcquisition');
+            updateTotal('similarExhibitionAttendance');
+
+            // 多选题滑块
+            const multiConfig = [
+                { type: 'channels', icon: 'fa-info-circle text-blue-500', title: '信息渠道' },
+                { type: 'purposes', icon: 'fa-bullseye text-green-500', title: '参观目的' },
+                { type: 'foodTypes', icon: 'fa-utensils text-yellow-500', title: '餐饮类型' },
+                { type: 'accommodations', icon: 'fa-bed text-purple-500', title: '住宿类型' },
+                { type: 'transportations', icon: 'fa-car text-red-500', title: '交通类型' }
+            ];
+
+            multiConfig.forEach(({ type, icon, title }) => {
+                const container = document.createElement('div');
+                dom.containers.multiSelect.appendChild(container);
+                generateSliders(type, defaultMultiSelectRatios[type], container, true, icon, title);
+            });
+        };
+
+        // 更新单选类型总比例
+        const updateTotal = (type) => {
+            const total = Object.values(state.sliders[type]).reduce((sum, slider) => sum + parseInt(slider.value), 0);
+            dom.totals[type].textContent = `总比例: ${total}%`;
+            dom.totals[type].className = total === 100 
+                ? 'text-xs text-green-600 font-semibold text-right' 
+                : 'text-xs text-red-600 font-semibold text-right';
+        };
+
+        // 验证图表容器是否存在
+        const validateChartContainer = (id) => {
+            const container = dom.chartContainers[id];
+            if (!container) {
+                console.error(`图表容器 ${id} 不存在`);
+                return false;
+            }
+            return true;
+        };
+
+        // 通用图表创建函数
+        const createChart = (id, type, labels, data, options = {}) => {
+            if (!validateChartContainer(id)) return;
+            
+            // 销毁已存在的图表
+            if (state.charts[id]) state.charts[id].destroy();
+            
+            try {
+                const ctx = dom.chartContainers[id].getContext('2d');
+                const defaultOpts = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { padding: 10, usePointStyle: true } 
+                        } 
+                    }
+                };
+                
+                // 创建新图表
+                state.charts[id] = new Chart(ctx, {
+                    type,
+                    data: { 
+                        labels, 
+                        datasets: [{ 
+                            data, 
+                            backgroundColor: getColors(labels.length), 
+                            borderWidth: 0 
+                        }] 
+                    },
+                    options: { ...defaultOpts, ...options }
+                });
+            } catch (error) {
+                console.error(`创建图表 ${id} 失败:`, error);
+            }
+        };
+
+        // 生成图表颜色
+        const getColors = (count) => {
+            const baseColors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#6366F1', '#14B8A6', '#F97316'];
+            return Array.from({ length: count }, (_, i) => baseColors[i % baseColors.length]);
+        };
+
+        // 生成模拟数据
+        const generateSimulationData = () => {
+            // 验证比例
+             const types = ['age', 'occupation', 'region', 'foodConsumption', 'accommodationConsumption', 'transportationConsumption', 'travelConsumption', 'trainingConsumption', 'shoppingConsumption', 'entertainmentConsumption', 'economicImpact', 'employmentImpact', 'serviceSatisfaction', 'businessIntention', 'purchaseExpenditure', 'productTrendAwareness', 'businessPartnerAcquisition', 'similarExhibitionAttendance'];
+            if (types.some(type => Object.values(state.sliders[type]).reduce((s, v) => s + parseInt(v.value), 0) !== 100)) {
+                showNotification('所有单选类型总比例必须为100%', 'error');
+                return;
+            }
+
+            const sampleSize = parseInt(dom.sampleSize.value);
+            const maleRatio = parseInt(dom.maleRatio.value) / 100;
+
+            // 获取分布数据
+            const getDistribution = (type) => 
+                Object.fromEntries(Object.entries(state.sliders[type]).map(([k, v]) => [k, parseInt(v.value) / 100]));
+
+            const dist = {
+                age: getDistribution('age'),
+                occupation: getDistribution('occupation'),
+                region: getDistribution('region'),
+                foodConsumption: getDistribution('foodConsumption'),
+                accommodationConsumption: getDistribution('accommodationConsumption'),
+                transportationConsumption: getDistribution('transportationConsumption'),
+                travelConsumption: getDistribution('travelConsumption'),
+                trainingConsumption: getDistribution('trainingConsumption'),
+                shoppingConsumption: getDistribution('shoppingConsumption'),
+                entertainmentConsumption: getDistribution('entertainmentConsumption'),
+                // 新增4个选项的分布
+                economicImpact: getDistribution('economicImpact'),
+                employmentImpact: getDistribution('employmentImpact'),
+                serviceSatisfaction: getDistribution('serviceSatisfaction'),
+                businessIntention: getDistribution('businessIntention'),
+                purchaseExpenditure: getDistribution('purchaseExpenditure'),
+                productTrendAwareness: getDistribution('productTrendAwareness'),
+                businessPartnerAcquisition: getDistribution('businessPartnerAcquisition'),
+                similarExhibitionAttendance: getDistribution('similarExhibitionAttendance'),
+                multiSelect: Object.fromEntries(
+                    Object.keys(state.sliders.multiSelect).map(type => [
+                        type,
+                        Object.fromEntries(Object.entries(state.sliders.multiSelect[type]).map(([k, v]) => [k, parseInt(v.value) / 100]))
+                    ])
+                )
+            };
+
+            // 生成数据
+            state.generatedData = Array.from({ length: sampleSize }, (_, i) => {
+                // 基础信息
+                const gender = Math.random() < maleRatio ? '男' : '女';
+                const age = pickByProbability(dist.age);
+                const occupation = pickByProbability(dist.occupation);
+                const region = pickByProbability(dist.region);
+
+                // 消费数据
+                const foodConsumption = pickByProbability(dist.foodConsumption);
+                const accommodationCost = pickByProbability(dist.accommodationConsumption);
+                const transportationCost = pickByProbability(dist.transportationConsumption);
+                const travelCost = pickByProbability(dist.travelConsumption);
+                const trainingCost = pickByProbability(dist.trainingConsumption);
+                const shoppingCost = pickByProbability(dist.shoppingConsumption);
+                const entertainmentCost = pickByProbability(dist.entertainmentConsumption);
+                // 新增4个选项的数据
+                const economicImpact = pickByProbability(dist.economicImpact);
+                const employmentImpact = pickByProbability(dist.employmentImpact);
+                const serviceSatisfaction = pickByProbability(dist.serviceSatisfaction);
+                const businessIntention = pickByProbability(dist.businessIntention);
+                const purchaseExpenditure = pickByProbability(dist.purchaseExpenditure);
+                const productTrendAwareness = pickByProbability(dist.productTrendAwareness);
+                const businessPartnerAcquisition = pickByProbability(dist.businessPartnerAcquisition);
+                const similarExhibitionAttendance = pickByProbability(dist.similarExhibitionAttendance);
+
+                // 多选题数据
+                const channels = generateMultiOptions('channels', dist.multiSelect.channels);
+                const purposes = generateMultiOptions('purposes', dist.multiSelect.purposes);
+                const foodTypes = generateMultiOptions('foodTypes', dist.multiSelect.foodTypes);
+                const accommodations = generateMultiOptions('accommodations', dist.multiSelect.accommodations);
+                const transportations = generateMultiOptions('transportations', dist.multiSelect.transportations);
+
+                return {
+                    id: i + 1, gender, age, occupation, region,
+                    foodConsumption, accommodationCost, transportationCost,
+                    travelCost, trainingCost, shoppingCost, entertainmentCost, economicImpact, employmentImpact, serviceSatisfaction, businessIntention,
+                    purchaseExpenditure, productTrendAwareness, businessPartnerAcquisition, similarExhibitionAttendance,
+                    channels, purposes, foodTypes, accommodations, transportations
+                };
+            });
+
+            // 更新UI
+            updateDataOverview();
+            updateSampleTable();
+            updateCharts();
+            showNotification('数据生成成功！', 'success');
+        };
+
+        // 按概率选择选项
+        const pickByProbability = (probMap) => {
+            let random = Math.random(), cumulative = 0;
+            for (const [key, prob] of Object.entries(probMap)) {
+                cumulative += prob;
+                if (random < cumulative) return key;
+            }
+            return Object.keys(probMap)[0];
+        };
+
+        // 生成多选题选项
+const generateMultiOptions = (type, probMap) => {
+    const entries = Object.entries(probMap);
+    let selected = entries
+        .filter(([_, prob]) => Math.random() < prob)
+        .map(([key]) => key);
+    
+    // 确保至少有一个选项被选中
+    if (selected.length === 0) {
+        // 如果首次筛选没有选中任何选项，随机选择一个选项
+        const randomIndex = Math.floor(Math.random() * entries.length);
+        selected = [entries[randomIndex][0]];
+    }
+    
+    // 处理住宿类型的特殊情况
+    if (type === 'accommodations') {
+        const hasRelativesHome = selected.includes('亲朋家中');
+        const hasNoStay = selected.includes('未住宿');
+        const hasOtherOptions = selected.some(opt => opt !== '亲朋家中' && opt !== '未住宿');
+        
+        // 如果同时选择了'亲朋家中'和'未住宿'，随机保留一个
+        if (hasRelativesHome && hasNoStay) {
+            const keepRelativesHome = Math.random() > 0.5;
+            return keepRelativesHome ? '亲朋家中' : '未住宿';
+        }
+        
+        // 如果选择了'亲朋家中'或'未住宿'以及其他选项，只保留前者
+        if (hasRelativesHome && hasOtherOptions) {
+            return '亲朋家中';
+        }
+        
+        if (hasNoStay && hasOtherOptions) {
+            return '未住宿';
+        }
+    }
+    
+    return selected.join('、');
+};
+
+        // 更新数据概览
+        const updateDataOverview = () => {
+            const data = state.generatedData;
+            const maleCount = data.filter(d => d.gender === '男').length;
+            const ageGroups = Object.entries(data.reduce((acc, d) => (acc[d.age] = (acc[d.age] || 0) + 1, acc), {}));
+            const regions = Object.entries(data.reduce((acc, d) => (acc[d.region] = (acc[d.region] || 0) + 1, acc), {}));
+
+            dom.totalCount.textContent = data.length;
+            dom.maleCount.textContent = maleCount;
+            dom.femaleCount.textContent = data.length - maleCount;
+            dom.mainAgeGroup.textContent = ageGroups.sort((a, b) => b[1] - a[1])[0][0];
+            dom.mainRegion.textContent = regions.sort((a, b) => b[1] - a[1])[0][0];
+        };
+
+        // 更新样例表格
+        const updateSampleTable = () => {
+            dom.sampleDataTable.innerHTML = '';
+            state.generatedData.slice(0, 15).forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50 transition-colors';
+                tr.innerHTML = `
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.id}</td>
+                    <td class="px-4 py-3 text-sm">
+                        <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${row.gender === '男' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'}">${row.gender}</span>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.age}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.occupation}</td>
+                    <td class="px-4 py-3 text-sm">
+                        <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">${row.region}</span>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.foodConsumption}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.accommodationCost}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.transportationCost}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.travelCost}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.trainingCost}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.shoppingCost}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.entertainmentCost}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${row.economicImpact}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.employmentImpact}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.serviceSatisfaction}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.businessIntention}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.purchaseExpenditure}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.productTrendAwareness}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.businessPartnerAcquisition}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.similarExhibitionAttendance}</td>
+                `;
+                dom.sampleDataTable.appendChild(tr);
+            });
+        };
+
+        // 更新所有图表
+const updateCharts = () => {
+    const data = state.generatedData;
+    if (!data.length) return;
+    
+    // 注册数据标签插件
+    Chart.register(ChartDataLabels);
+    
+    // 定义所有消费分类的固定顺序
+    const consumptionOrders = {
+        food: ['100以内', '100~300', '300~500', '500~1000', '其他'],
+        accommodation: ['300以内', '300~500', '500~800', '800~2000', '其他'],
+        transportation: ['100以内', '100~300', '300~500', '500~1000', '1000~3000', '其他'],
+        travel: ['无参观计划', '100以内', '100~300', '300~500', '其他'],
+        training: ['无参加计划', '100以内', '100~300', '300~500', '500~2000', '其他'],
+        shopping: ['无光顾计划', '100以内', '100~300', '300~500', '500~1000', '其他'],
+        entertainment: ['无参加计划', '100以内', '100~300', '300~500', '500~800', '其他'],
+        purchaseExpenditure: ['无购买计划', '500以内', '500~1000', '1000~2000', '2000~5000', '5000~10000', '10000~20000', '20000~50000', '50000以上']
+    };
+
+    // 定义年龄分组的固定顺序
+    const ageGroups = ['18岁以下', '18-25岁', '26-35岁', '36-45岁', '46-55岁', '56岁以上'];
+    
+    // 基础图表数据
+    const genderData = { '男': data.filter(d => d.gender === '男').length, '女': data.length - data.filter(d => d.gender === '男').length };
+    
+    // 年龄数据按固定顺序处理
+    const ageData = data.reduce((acc, d) => {
+        acc[d.age] = (acc[d.age] || 0) + 1;
+        return acc;
+    }, {});
+    // 确保按指定顺序排列，缺失的分组显示为0
+    const orderedAgeLabels = ageGroups;
+    const orderedAgeData = ageGroups.map(group => ageData[group] || 0);
+
+    const occupationData = data.reduce((acc, d) => (acc[d.occupation] = (acc[d.occupation] || 0) + 1, acc), {});
+    const regionData = Object.fromEntries(Object.entries(
+        data.reduce((acc, d) => (acc[d.region] = (acc[d.region] || 0) + 1, acc), {})
+    ).filter(([_, v]) => v > 0));
+
+    // 消费数据处理函数 - 按固定顺序返回数据
+    const getOrderedConsumptionData = (type, property) => {
+        const counts = data.reduce((acc, d) => {
+            acc[d[property]] = (acc[d[property]] || 0) + 1;
+            return acc;
+        }, {});
+        return consumptionOrders[type].map(key => counts[key] || 0);
+    };
+
+    // 消费数据图表 - 按固定顺序处理
+    const foodLabels = consumptionOrders.food;
+    const foodConsumptionData = getOrderedConsumptionData('food', 'foodConsumption');
+    
+    const accommodationLabels = consumptionOrders.accommodation;
+    const accommodationConsumptionData = getOrderedConsumptionData('accommodation', 'accommodationCost');
+    
+    const transportationLabels = consumptionOrders.transportation;
+    const transportationConsumptionData = getOrderedConsumptionData('transportation', 'transportationCost');
+    
+    const travelLabels = consumptionOrders.travel;
+    const travelConsumptionData = getOrderedConsumptionData('travel', 'travelCost');
+    
+    const trainingLabels = consumptionOrders.training;
+    const trainingConsumptionData = getOrderedConsumptionData('training', 'trainingCost');
+    
+    const shoppingLabels = consumptionOrders.shopping;
+    const shoppingConsumptionData = getOrderedConsumptionData('shopping', 'shoppingCost');
+    
+    const entertainmentLabels = consumptionOrders.entertainment;
+    const entertainmentConsumptionData = getOrderedConsumptionData('entertainment', 'entertainmentCost');
+    
+    const purchaseExpenditureLabels = consumptionOrders.purchaseExpenditure;
+    const purchaseExpenditureData = getOrderedConsumptionData('purchaseExpenditure', 'purchaseExpenditure');
+
+    // 新增选项的数据图表
+    const economicImpactData = data.reduce((acc, d) => (acc[d.economicImpact] = (acc[d.economicImpact] || 0) + 1, acc), {});
+    const employmentImpactData = data.reduce((acc, d) => (acc[d.employmentImpact] = (acc[d.employmentImpact] || 0) + 1, acc), {});
+    const serviceSatisfactionData = data.reduce((acc, d) => (acc[d.serviceSatisfaction] = (acc[d.serviceSatisfaction] || 0) + 1, acc), {});
+    const businessIntentionData = data.reduce((acc, d) => (acc[d.businessIntention] = (acc[d.businessIntention] || 0) + 1, acc), {});
+    const productTrendAwarenessData = data.reduce((acc, d) => (acc[d.productTrendAwareness] = (acc[d.productTrendAwareness] || 0) + 1, acc), {});
+    const businessPartnerAcquisitionData = data.reduce((acc, d) => (acc[d.businessPartnerAcquisition] = (acc[d.businessPartnerAcquisition] || 0) + 1, acc), {});
+    const similarExhibitionAttendanceData = data.reduce((acc, d) => (acc[d.similarExhibitionAttendance] = (acc[d.similarExhibitionAttendance] || 0) + 1, acc), {});
+
+    // 创建基础图表
+    createChart('genderChart', 'doughnut', Object.keys(genderData), Object.values(genderData), {
+        plugins: {
+            legend: { position: 'bottom' },
+            datalabels: {
+                formatter: (value) => {
+                    const total = Object.values(genderData).reduce((a, b) => a + b, 0);
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#fff',
+                font: { size: 12 }
+            }
+        }
+    });
+
+    // 年龄图表使用有序数据
+    createChart('ageChart', 'bar', orderedAgeLabels, orderedAgeData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = orderedAgeData.reduce((a, b) => a + b, 0);
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('occupationChart', 'bar', Object.keys(occupationData), Object.values(occupationData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = Object.values(occupationData).reduce((a, b) => a + b, 0);
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('regionChart', 'bar', Object.keys(regionData), Object.values(regionData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = Object.values(regionData).reduce((a, b) => a + b, 0);
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    // 消费数据图表（按固定顺序显示）
+    createChart('foodConsumptionChart', 'bar', foodLabels, foodConsumptionData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('accommodationConsumptionChart', 'bar', accommodationLabels, accommodationConsumptionData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('transportationConsumptionChart', 'bar', transportationLabels, transportationConsumptionData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('travelConsumptionChart', 'bar', travelLabels, travelConsumptionData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('trainingConsumptionChart', 'bar', trainingLabels, trainingConsumptionData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('shoppingConsumptionChart', 'bar', shoppingLabels, shoppingConsumptionData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('entertainmentConsumptionChart', 'bar', entertainmentLabels, entertainmentConsumptionData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    // 新增选项图表
+    createChart('economicImpactChart', 'bar', Object.keys(economicImpactData), Object.values(economicImpactData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('employmentImpactChart', 'bar', Object.keys(employmentImpactData), Object.values(employmentImpactData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('serviceSatisfactionChart', 'bar', Object.keys(serviceSatisfactionData), Object.values(serviceSatisfactionData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('businessIntentionChart', 'bar', Object.keys(businessIntentionData), Object.values(businessIntentionData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('purchaseExpenditureChart', 'bar', purchaseExpenditureLabels, purchaseExpenditureData, {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('productTrendAwarenessChart', 'bar', Object.keys(productTrendAwarenessData), Object.values(productTrendAwarenessData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('businessPartnerAcquisitionChart', 'bar', Object.keys(businessPartnerAcquisitionData), Object.values(businessPartnerAcquisitionData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+    createChart('similarExhibitionAttendanceChart', 'bar', Object.keys(similarExhibitionAttendanceData), Object.values(similarExhibitionAttendanceData), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: { y: { beginAtZero: true } }
+    });
+
+// 多选题图表 - 严格按照(选项出现次数 ÷ 总样本数) × 100%计算占比
+const multiTypes = ['channels', 'purposes', 'foodTypes', 'accommodations', 'transportations'];
+multiTypes.forEach(type => {
+    // 计算每个选项的出现次数
+    const counts = exhibitionOptions[type].reduce((acc, opt) => {
+        // 统计包含该选项的样本数量
+        acc[opt] = data.filter(d => d[type] && d[type].includes(opt)).length;
+        return acc;
+    }, {});
+    
+    // 创建图表
+    createChart(`${type}Chart`, 'bar', Object.keys(counts), Object.values(counts), {
+        plugins: {
+            legend: { display: false },
+            datalabels: {
+                anchor: 'center',
+                align: 'center',
+                formatter: (value) => {
+                    // 严格按照公式计算：(选项出现次数 ÷ 总样本数) × 100%
+                    const total = data.length;
+                    return ((value / total) * 100).toFixed(1) + '%';
+                },
+                color: '#333',
+                font: { size: 12 }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {                   
+                        return value;
+                    }
+                }
+            }
+        }
+    });
+});
+};
+
+
+        // 下载功能
+        const downloadCSV = async () => {
+    if (!state.generatedData.length) return showNotification('请先生成数据', 'error');
+
+    // 创建工作簿
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('展会观众数据');
+
+    // 设置表头
+    const headers = ['1.性别', '2.年龄', '3.职业', '4.地区', '5.信息渠道', '6.参观目的', '7.餐饮类型', '8.餐饮消费', '9.住宿类型', '10.住宿消费', '11.交通类型', '12.交通消费', '13.旅游支出', '14.培训支出', '15.购物支出', '16.娱乐支出', '17.经济推动作用', '18.带动就业作用', '19.服务满意度', '20.业务合作意向', '21.实际购买支出', '22.了解产品趋势', '23.结识业务伙伴', '24.参加同类展会'];
+    worksheet.addRow(headers);
+
+    // 设置表头样式（加粗 + 字号12）
+    worksheet.getRow(1).font = { bold: true, size: 12 };
+
+    // 填充数据
+    state.generatedData.forEach(row => {
+        worksheet.addRow([
+            row.gender, row.age, row.occupation, row.region,
+            row.channels.replace(/、/g, '┋'), 
+            row.purposes.replace(/、/g, '┋'),
+            row.foodTypes.replace(/、/g, '┋'),
+            row.foodConsumption,
+            row.accommodations.replace(/、/g, '┋'),
+            (row.accommodations === '亲朋家中' || row.accommodations === '未住宿') ? "(跳过)" : row.accommodationCost,
+            row.transportations.replace(/、/g, '┋'),
+            row.transportationCost,
+            row.travelCost, row.trainingCost, row.shoppingCost, row.entertainmentCost,
+            row.economicImpact, row.employmentImpact, row.serviceSatisfaction, row.businessIntention,
+            row.purchaseExpenditure, row.productTrendAwareness, row.businessPartnerAcquisition, row.similarExhibitionAttendance
+        ]);
+    });
+
+    // 设置所有单元格字号为10
+    worksheet.eachRow(row => {
+        row.font = { size: 10 ,
+             name: 'Arial',
+        };
+    });
+
+    // 设置列宽
+    worksheet.columns = [
+        { width: 8 }, { width: 8 }, { width: 20 }, { width: 10 },
+        { width: 45 }, { width: 45 }, { width: 30 }, { width: 18 },
+        { width: 30 }, { width: 18 }, { width: 30 }, { width: 18 },
+        { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 },
+        { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 },
+        { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }
+    ];
+
+    // 生成Excel文件并下载
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, '展会观众数据.xlsx');
+};
+
+        const downloadJSON = () => {
+            if (!state.generatedData.length) return showNotification('请先生成数据', 'error');
+            const json = JSON.stringify(state.generatedData, null, 2);
+            downloadFile(json, '展会观众数据.json', 'application/json');
+        };
+
+        const downloadFile = (content, name, type) => {
+            const blob = new Blob([content], { type: `${type};charset=utf-8` });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = name;
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
+        };
+
+        // 通知功能
+        const showNotification = (message, type = 'info') => {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 z-50 ${
+                type === 'success' ? 'bg-green-500 text-white' : type === 'error' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
+            }`;
+            notification.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-times-circle' : 'fa-info-circle'} mr-2"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        };
+
+        // 初始化事件监听
+        const initEvents = () => {
+            // 样本数量滑块
+            dom.sampleSize.addEventListener('input', () => {
+                dom.sampleSizeValue.textContent = dom.sampleSize.value;
+            });
+
+            // 性别滑块联动
+            [dom.maleRatio, dom.femaleRatio].forEach(slider => {
+                slider.addEventListener('input', function() {
+                    const isMale = this.id === 'maleRatio';
+                    const value = parseInt(this.value);
+                    const otherValue = 100 - value;
+                    dom[isMale ? 'maleRatioValue' : 'femaleRatioValue'].textContent = `${value}%`;
+                    dom[isMale ? 'femaleRatio' : 'maleRatio'].value = otherValue;
+                    dom[isMale ? 'femaleRatioValue' : 'maleRatioValue'].textContent = `${otherValue}%`;
+                });
+            });
+// 为所有"是/否"类型的滑块添加联动功能
+    const yesNoTypes = [
+        'economicImpact',
+        'employmentImpact', 
+        'businessIntention',
+        'productTrendAwareness',
+        'businessPartnerAcquisition',
+        'similarExhibitionAttendance'
+    ];
+    
+    // 为每种类型的滑块添加联动
+    yesNoTypes.forEach(type => {
+        // 获取该类型下的所有滑块
+        const sliders = Object.values(state.sliders[type]);
+        if (sliders.length === 2) {
+            // 确保只处理有两个选项的情况（"是"和"否"）
+            sliders.forEach(slider => {
+                slider.addEventListener('input', function() {
+                    const value = parseInt(this.value);
+                    const otherValue = 100 - value;
+                    
+                    // 更新当前滑块的值显示
+                    const valueEl = document.getElementById(`${this.id}Value`);
+                    valueEl.textContent = `${value}%`;
+                    
+                    // 更新另一个滑块的值和显示
+                    const otherSlider = sliders.find(s => s.id !== this.id);
+                    if (otherSlider) {
+                        otherSlider.value = otherValue;
+                        document.getElementById(`${otherSlider.id}Value`).textContent = `${otherValue}%`;
+                    }
+                    
+                    // 更新总比例显示
+                    updateTotal(type);
+                });
+            });
+        }
+    });
+            // 增减按钮事件
+            document.querySelectorAll('.increment-btn, .decrement-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const target = document.getElementById(this.dataset.target);
+                    if (!target) return;
+                    const step = parseInt(target.step) || 1;
+                    const current = parseInt(target.value);
+                    target.value = this.classList.contains('increment-btn') 
+                        ? Math.min(current + step, parseInt(target.max))
+                        : Math.max(current - step, parseInt(target.min));
+                    target.dispatchEvent(new Event('input'));
+                    
+                    // 性别按钮联动
+                    if (['maleRatio', 'femaleRatio'].includes(target.id)) {
+                        const otherId = target.id === 'maleRatio' ? 'femaleRatio' : 'maleRatio';
+                        document.getElementById(otherId).value = 100 - parseInt(target.value);
+                        document.getElementById(otherId).dispatchEvent(new Event('input'));
+                    }
+                    // 检查是否为"是/否"类型的滑块按钮
+            const targetIdParts = target.id.split('_');
+            if (targetIdParts.length > 1) {
+                const type = targetIdParts[0];
+                if (yesNoTypes.includes(type)) {
+                    const otherSlider = Object.values(state.sliders[type]).find(s => s.id !== target.id);
+                    if (otherSlider) {
+                        otherSlider.value = 100 - parseInt(target.value);
+                        otherSlider.dispatchEvent(new Event('input'));
+                    }
+                    }
+                  }
+                });
+            });
+
+            // 绑定按钮事件
+            dom.generateBtn.addEventListener('click', generateSimulationData);
+            dom.downloadCSV.addEventListener('click', downloadCSV);
+            dom.downloadJSON.addEventListener('click', downloadJSON);
+        };
+
+        // 初始化图表容器尺寸
+        const initChartDimensions = () => {
+            Object.values(dom.chartContainers).forEach(container => {
+                if (container && container.parentElement) {
+                    container.parentElement.style.height = '300px';
+                    container.style.width = '100%';
+                    container.style.height = '100%';
+                }
+            });
+        };
+
+        // 初始化应用
+        const initApp = () => {
+            initChartDimensions();
+            initSliders();
+            initEvents();
+        };
+
+        // 确保在Chart.js完全加载后初始化应用
+        window.addEventListener('load', function() {
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js未加载成功，尝试重新加载...');
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+                script.onload = initApp;
+                document.head.appendChild(script);
+            } else {
+                initApp();
+            }
+        });
+    </script>
+</body>
+</html>
