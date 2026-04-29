@@ -1,0 +1,2956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>展会参展商数据模拟生成工具</title>
+    <!-- 引入外部资源 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    
+    <!-- 配置Tailwindwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#FF7D00',
+                        neutral: '#F5F7FA',
+                        dark: '#1D2129',
+                        'primary-light': '#E8F3FF',
+                        'neutral-dark': '#86909C'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'card': '0 4px 20px rgba(0, 0, 0, 0.08)',
+                        'card-hover': '0 8px 30px rgba(0, 0, 0, 0.12)',
+                    }
+                },
+            }
+        }
+    </script>
+    
+    <!-- 自定义工具类 -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-transition {
+                transition: all 0.3s ease;
+            }
+            .gradient-bg {
+                background: linear-gradient(135deg, #165DFF 0%, #0E42D2 100%);
+            }
+            .stat-card-shadow {
+                box-shadow: 0 2px 14px rgba(22, 93, 255, 0.12);
+            }
+        }
+    </style>
+    
+    <style>
+        /* 基础动画定义 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+        
+        /* 滚动条条美化 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        
+        /* 下拉选项选项样式 */
+        #tableSort {
+            color: #1D2129; /* 使用dark颜色 */
+        }
+        
+        #tableSort option {
+            color: #1D2129; /* 使用dark颜色 */
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        
+        /* 表格格行悬停效果 */
+        #dataTable tbody tr {
+            transition: background-color 0.2s ease;
+        }
+        
+        /* 加载动画 */
+        .loader {
+            border-top-color: #165DFF;
+            animation: spinner 0.6s linear infinite;
+        }
+        
+        @keyframes spinner {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* 区间分析列表样式 */
+        .range-item {
+            transition: all 0.2s ease;
+        }
+        
+        .range-item:hover {
+            background-color: #f8fafc;
+            transform: translateX(4px);
+        }
+        
+        .range-bar {
+            height: 6px;
+            border-radius: 3px;
+            background-color: #e2e8f0;
+            overflow: hidden;
+        }
+        
+        .range-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            background-color: #165DFF;
+            transition: width 0.5s ease;
+        }
+        
+        /* 区间数值格式化 */
+        .formatted-number {
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body class="font-inter bg-neutral text-dark min-h-screen flex flex-col">
+    <!-- 顶部导航 -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6 md:py-8">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="text-center md:text-left mb-4 md:mb-0">
+                    <h1 class="text-[clamp(1.5rem,3vw,2.25rem)] font-bold tracking-tight">
+                        展会参展商数据模拟生成工具
+                    </h1>
+                    <p class="text-blue-100 mt-1 text-sm md:text-base">
+                        根据输入参数或占比设置，自动生成模拟参展商数据
+                    </p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="hidden md:inline-flex items-center text-sm text-blue-100">
+                        <i class="fa fa-calendar-o mr-1"></i> 2025
+                    </span>
+                    <button id="helpBtn" class="bg-white/20 hover:bg-white/30 transition-colors px-3 py-1.5 rounded-lg text-sm flex items-center">
+                        <i class="fa fa-question-circle mr-1.5"></i> 帮助
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow container mx-auto px-4 py-6 md:py-8">
+<div class="flex flex-col lg:flex-row gap-6">
+    <!-- 左侧控制面板（固定宽度+独立滚动） -->
+    <div class="lg:w-1/3 w-full space-y-6">
+        <!-- 数据生成设置卡片（固定高度+内部滚动） -->
+        <div class="bg-white rounded-xl shadow-card card-transition hover:shadow-card-hover overflow-hidden h-[100vh] flex flex-col">
+            <div class="bg-primary text-white px-6 py-4">
+                <h2 class="text-xl font-semibold flex items-center">
+                    <i class="fa fa-sliders mr-2.5"></i> 数据生成设置
+                </h2>
+            </div>
+            <!-- 内部部滚动容器 -->
+            <div class="p-5 flex-grow overflow-y-auto pr-2">
+                <!-- 选项卡导航 -->
+                <div class="border-b border-gray-200 mb-4">
+                    <ul class="flex -mb-px text-sm font-medium text-center" id="settingsTabs" role="tablist">
+                        <li class="mr-2" role="presentation">
+                            <button id="input-tab" data-tab="input-panel" class="inline-block p-4 border-b-2 border-primary text-primary rounded-t-lg" aria-selected="true">
+                                数值输入
+                            </button>
+                        </li>
+                        <li role="presentation">
+                            <button id="percentage-tab" data-tab="percentage-panel" class="inline-block p-4 border-b-2 border-transparent text-neutral-dark hover:text-primary hover:border-primary/30 rounded-t-lg" aria-selected="false">
+                                占比设置
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                
+                <!-- 选项卡内容 -->
+                <div class="tab-contents">
+                    <!-- 数值输入面板 -->
+                    <div id="input-panel" class="tab-content block animate-fade-in">
+                        <div class="space-y-4">
+                            <div>
+                <label for="customCategories" class="block text-sm font-medium text-gray-700 mb-1.5">参展商分类 (大写逗号分隔)</label>
+                <input type="text" id="customCategories" placeholder="例如: 装修,软件,硬件,服务,制造,教育,医疗,金融" 
+                    value="装修,软件,硬件,服务,制造,教育,医疗,金融"
+                    class="w-full px-3.5 py-2 border border-gray-300 rounded-lg-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                <p class="text-xs text-gray-500 mt-1">留空将使用默认分类，多个分类请用英文逗号分隔</p>
+            </div>
+                            <div>
+                                <label for="exhibitorCount" class="block text-sm font-medium text-gray-700 mb-1.5">参展商数量</label>
+                                <input type="number" id="exhibitorCount" value="30" min="1" max="100"
+                                    class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">展位面积范围 (平方米)</label>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <input type="number" id="minArea" placeholder="最小值" value="9" min="9"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxArea" placeholder="最大值" value="360"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline outline-none">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 面积区间比设置 -->
+                            <div class="border border-gray-100 rounded-lg p-4 mb-4">
+                                <div class="flex justify-between items-center mb-3">
+                                    <label class="block text-sm font-medium text-gray-700">面积占比设置</label>
+                                    <button id="resetAreaRatios" class="text-xs text-primary hover:text-primary/80 transition-colors">
+                                        <i class="fa fa-refresh mr-1"></i> 重置
+                                    </button>
+                                </div>
+                                
+                                <!-- 面积区间1 -->
+                                <div class="mb-4">
+                                    <div class="flex justify-between text-xs mb-1">
+                                        <span id="areaRange1Label">小面积区间 (9-100㎡)</span>
+                                        <span id="areaRatio1Value" class="font-medium text-primary">50%</span>
+                                    </div>
+                                    <input type="range" id="areaRatio1" min="0" max="100" value="50" 
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAreaRatios()">
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>0%</span>
+                                        <span>50%</span>
+                                        <span>100%</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- 面积区间2 -->
+                                <div class="mb-4">
+                                    <div class="flex justify-between text-xs mb-1">
+                                        <span id="areaRange2Label">中面积区间 (100-200㎡)</span>
+                                        <span id="areaRatio2Value" class="font-medium text-primary">30%</span>
+                                    </div>
+                                    <input type="range" id="areaRatio2" min="0" max="100" value="30" 
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAreaRatios()">
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>0%</span>
+                                        <span>50%</span>
+                                        <span>100%</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- 面积区间3 -->
+                                <div class="mb-2">
+                                    <div class="flex justify-between text-xs mb-1">
+                                        <span id="areaRange3Label">大面积区间 (>200㎡)</span>
+                                        <span id="areaRatio3Value" class="font-medium text-primary">20%</span>
+                                    </div>
+                                    <input type="range" id="areaRatio3" min="0" max="100" value="20" 
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAreaRatios()">
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>0%</span>
+                                        <span>50%</span>
+                                        <span>100%</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="pt-2 text-xs text-center">
+                                    总占比: <span id="areaRatioTotal" class="font-medium">100%</span>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">参展人员数量范围 (人)</label>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <input type="number" id="minStaff" placeholder="最小值" value="2"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxStaff" placeholder="最大值" value="20"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 参展人员数量范围占比 -->
+                            <div class="border border-gray-100 rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">参展人员数量范围占比</label>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>10人以下</span>
+                                            <span id="staffRange1Value" class="font-medium text-primary">90%</span>
+                                        </div>
+                                        <input type="range" id="staffRange1" min="0" max="100" value="90" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateStaffRangePercentages('staffRange1')">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>10人以上</span>
+                                            <span id="staffRange2Value" class="font-medium text-primary">10%</span>
+                                        </div>
+                                        <input type="range" id="staffRange2" min="0" max="100" value="10" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateStaffRangePercentages('staffRange2')">
+                                    </div>
+                                    <div class="pt-2 text-xs text-center text-gray-500">
+                                        总占比: <span id="staffRangeTotal" class="font-medium">100%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 修改展位租赁单价为范围输入 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">展位租赁单价范围 (元/平方米)</label>
+                                <div class="grid grid-cols-2 gap-3 mb-2">
+                                    <div>
+                                        <input type="number" id="minRentPrice" placeholder="最小值" value="100"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxRentPrice" placeholder="最大值" value="200"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>最小值: <span id="minRentPriceValue" class="font-medium text-primary">100</span>元</span>
+                                    <span>最大值: <span id="maxRentPriceValue" class="font-medium text-primary">200</span>元</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 高级设置折叠面板 -->
+                            <div class="border rounded-lg overflow-hidden">
+                                <button id="advancedSettingsToggle" class="w-full flex justify-between items-center p-3.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left">
+                                    <span class="font-medium text-gray-700 flex items-center">
+                                        <i class="fa fa-cog mr-2 text-primary"></i> 高级设置
+                                    </span>
+                                    <i id="advancedSettingsIcon" class="fa fa-chevron-down text-gray-500 transition-transform duration-300"></i>
+                                </button>
+                                <div id="advancedSettingsPanel" class="p-3.5 border-t">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1.5">业务洽谈数量范围 (家)</label>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <input type="number" id="minNegotiations" placeholder="最小值" value="10"
+                                                        class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                                </div>
+                                                <div>
+                                                    <input type="number" id="maxNegotiations" placeholder="最大值" value="50"
+                                                        class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1.5">订单数量范围</label>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <input type="number" id="minOrders" placeholder="最小值" value="1"
+                                                        class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outlineoutline-none">
+                                                </div>
+                                                <div>
+                                                    <input type="number" id="maxOrders" placeholder="最大值" value="20"
+                                                        class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1.5">预计销售额销售额范围 (元)</label>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <input type="number" id="minExpectedSales" placeholder="最小值" value="5000"
+                                                        class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                                </div>
+                                                <div>
+                                                    <input type="number" id="maxExpectedSales" placeholder="最大值" value="100000"
+                                                        class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:borderborder-primary transition-all outline-none">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 占比设置面板 -->
+                    <div id="percentage-panel" class="tab-content hidden animate-fade-in">
+                        <div class="space-y-5">
+                            <!-- 展位位搭建占租赁赁费用比例 - 修改为范围选择 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">展位位搭建占租赁费用比例范围</label>
+                                <div class="grid grid-cols-2 gap-3 mb-2">
+                                    <div>
+                                        <input type="number" id="minSetupPercentage" placeholder="最小值" value="50" min="0" max="200"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxSetupPercentage" placeholder="最大值" value="120" min="0" max="200"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>最小值: <span id="minSetupPercentageValue" class="font-medium text-primary">50%</span></span>
+                                    <span>最大值: <span id="maxSetupPercentageValue" class="font-medium text-primary">120%</span></span>
+                                </div>
+                            </div>
+                            
+                            <!-- 运输物流占租赁费用比例 - 修改为范围选择 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">运输物流流占租赁费用比例范围</label>
+                                <div class="grid grid-cols-2 gap-3 mb-2">
+                                    <div>
+                                        <input type="number" id="minLogisticsPercentage" placeholder="最小值" value="5" min="0" max="50"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxLogisticsPercentage" placeholder="最大值" value="15" min="0" max="50"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>最小值: <span id="minLogisticsPercentageValue" class="font-medium text-primary">5%</span></span>
+                                    <span>最大值: <span id="maxLogisticsPercentageValue" class="font-medium text-primary">15%</span></span>
+                                </div>
+                            </div>
+                            
+                            <!-- 广告宣传占租赁费用比例 - 修改为范围选择 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">广告宣传占租赁费用比例范围</label>
+                                <div class="grid grid-cols-2 gap-3 mb-2">
+                                    <div>
+                                        <input type="number" id="minAdPercentage" placeholder="最小值" value="2" min="0" max="50"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxAdPercentage" placeholder="最大值" value="5" min="0" max="50"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>最小值: <span id="minAdPercentageValue" class="font-medium text-primary">2%</span></span>
+                                    <span>最大值: <span id="maxAdPercentageValue" class="font-medium text-primary">5%</span></span>
+                                </div>
+                            </div>
+                            
+                            <!-- 餐饮支出人均标准 - 修改为范围选择 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">餐饮支出人均标准范围 (元/人)</label>
+                                <div class="grid grid-cols-2 gap-3 mb-2">
+                                    <div>
+                                        <input type="number" id="minFoodPerPerson" placeholder="最小值" value="120" min="0"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxFoodPerPerson" placeholder="最大值" value="200" min="0"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>最小值: <span id="minFoodPerPersonValue" class="font-medium text-primary">120</span>元</span>
+                                    <span>最大值: <span id="maxFoodPerPersonValue" class="font-medium text-primary">200</span>元</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 出行支出人均标准 - 修改为范围选择 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1.5">出行支出人均标准范围 (元/人)</label>
+                                <div class="grid grid-cols-2 gap-3 mb-2">
+                                    <div>
+                                        <input type="number" id="minTravelPerPerson" placeholder="最小值" value="200" min="0"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                    <div>
+                                        <input type="number" id="maxTravelPerPerson" placeholder="最大值" value="300" min="0"
+                                            class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none">
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>最小值: <span id="minTravelPerPersonValue" class="font-medium text-primary">200</span>元</span>
+                                    <span>最大值: <span id="maxTravelPerPersonValue" class="font-medium text-primary">300</span>元</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 观众专业性分布占比 -->
+                            <div class="border border-gray-100 rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">观众专业性分布占比</label>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>非常高</span>
+                                            <span id="professionalismLevel1Value" class="font-medium text-primary">20%</span>
+                                        </div>
+                                        <input type="range" id="professionalismLevel1" min="0" max="100" value="20" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateProfessionalismPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>较高</span>
+                                            <span id="professionalismLevel2Value" class="font-medium text-primary">30%</span>
+                                        </div>
+                                        <input type="range" id="professionalismLevel2" min="0" max="100" value="30" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateProfessionalismPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>一般</span>
+                                            <span id="professionalismLevel3Value" class="font-medium text-primary">30%</span>
+                                        </div>
+                                        <input type="range" id="professionalismLevel3" min="0" max="100" value="30" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateProfessionalismPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>较低</span>
+                                            <span id="professionalismLevel4Value" class="font-medium text-primary">15%</span>
+                                        </div>
+                                        <input type="range" id="professionalismLevel4" min="0" max="100" value="15" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateProfessionalismPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>非常低</span>
+                                            <span id="professionalismLevel5Value" class="font-medium text-primary">5%</span>
+                                        </div>
+                                        <input type="range" id="professionalismLevel5" min="0" max="100" value="5" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateProfessionalismPercentages()">
+                                    </div>
+                                    <div class="pt-2 text-xs text-center text-gray-500">
+                                        总占比: <span id="professionalismTotal" class="font-medium">100%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 洽谈成功率分布占比 -->
+                            <div class="border border-gray-100 rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">洽谈成功率分布占比</label>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>非常高</span>
+                                            <span id="successRateLevel1Value" class="font-medium text-primary">20%</span>
+                                        </div>
+                                        <input type="range" id="successRateLevel1" min="0" max="100" value="20" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateSuccessRatePercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>较高</span>
+                                            <span id="successRateLevel2Value" class="font-medium text-primary">30%</span>
+                                        </div>
+                                        <input type="range" id="successRateLevel2" min="0" max="100" value="30" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateSuccessRatePercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>一般</span>
+                                            <span id="successRateLevel3Value" class="font-medium text-primary">30%</span>
+                                        </div>
+                                        <input type="range" id="successRateLevel3" min="0" max="100" value="30" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateSuccessRatePercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>较低</span>
+                                            <span id="successRateLevel4Value" class="font-medium text-primary">15%</span>
+                                        </div>
+                                        <input type="range" id="successRateLevel4" min="0" max="100" value="15" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateSuccessRatePercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>非常低</span>
+                                            <span id="successRateLevel5Value" class="font-medium text-primary">5%</span>
+                                        </div>
+                                        <input type="range" id="successRateLevel5" min="0" max="100" value="5" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateSuccessRatePercentages()">
+                                    </div>
+                                    <div class="pt-2 text-xs text-center text-gray-500">
+                                        总占比: <span id="successRateTotal" class="font-medium">100%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 知名度提升分布占比 -->
+                            <div class="border border-gray-100 rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">知名度提升分布占比</label>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>非常显著</span>
+                                            <span id="awarenessLevel1Value" class="font-medium text-primary">20%</span>
+                                        </div>
+                                        <input type="range" id="awarenessLevel1" min="0" max="100" value="20" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAwarenessPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>较为显著</span>
+                                            <span id="awarenessLevel2Value" class="font-medium text-primary">30%</span>
+                                        </div>
+                                        <input type="range" id="awarenessLevel2" min="0" max="100" value="30" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAwarenessPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>一般</span>
+                                            <span id="awarenessLevel3Value" class="font-medium text-primary">30%</span>
+                                        </div>
+                                        <input type="range" id="awarenessLevel3" min="0" max="100" value="30" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAwarenessPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>不太显著</span>
+                                            <span id="awarenessLevel4Value" class="font-medium text-primary">15%</span>
+                                        </div>
+                                        <input type="range" id="awarenessLevel4" min="0" max="100" value="15" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAwarenessPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>无影响</span>
+                                            <span id="awarenessLevel5Value" class="font-medium text-primary">5%</span>
+                                        </div>
+                                        <input type="range" id="awarenessLevel5" min="0" max="100" value="5" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateAwarenessPercentages()">
+                                    </div>
+                                    <div class="pt-2 text-xs text-center text-gray-500">
+                                        总占比: <span id="awarenessTotal" class="font-medium">100%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 开拓新市场区域 - 是/否关联滑块 -->
+                            <div class="border border-gray-100 rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">开拓新市场区域</label>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>是</span>
+                                            <span id="newMarketYesValue" class="font-medium text-primary">70%</span>
+                                        </div>
+                                        <input type="range" id="newMarketYes" min="0" max="100" value="70" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateNewMarketPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>否</span>
+                                            <span id="newMarketNoValue" class="font-medium text-primary">30%</span>
+                                        </div>
+                                        <input type="range" id="newMarketNo" min="0" max="100" value="30" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateNewMarketPercentages()">
+                                    </div>
+                                    <div class="pt-2 text-xs text-center text-gray-500">
+                                        总占比: <span id="newMarketTotal" class="font-medium">100%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 结识新客户 - 是/否关联滑块 -->
+                            <div class="border border-gray-100 rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">结识新客户</label>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>是</span>
+                                            <span id="newClientsYesValue" class="font-medium text-primary">80%</span>
+                                        </div>
+                                        <input type="range" id="newClientsYes" min="0" max="100" value="80" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateNewClientsPercentages()">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>否</span>
+                                            <span id="newClientsNoValue" class="font-medium text-primary">20%</span>
+                                        </div>
+                                        <input type="range" id="newClientsNo" min="0" max="100" value="20" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateNewClientsPercentages()">
+                                    </div>
+                                    <div class="pt-2 text-xs text-center text-gray-500">
+                                        总占比: <span id="newClientsTotal" class="font-medium">100%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 操作按钮（固定在卡片底部） -->
+                <div class="mt-6 space-y-3 sticky bottom-0 bg-white pt-3">
+                    <button id="generateBtn" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2.5 px-4 rounded-lg transition-all flex items-center justify-center">
+                        <i class="fa fa-refresh mr-2"></i> 生成数据
+                    </button>
+                    <button id="exportBtn" class="w-full bg-white border border-primary text-primary hover:bg-primary-light font-medium py-2.5 px-4 rounded-lg transition-all flex items-center justify-center">
+                        <i class="fa fa-download mr-2"></i> 导出为Excel
+                    </button>
+<button id="exportAnalysisBtn" class="w-full bg-white border border-secondary text-secondary hover:bg-secondary-light font-medium py-2.5 px-4 rounded-lg transition-all flex items-center justify-center">
+        <i class="fa fa-bar-chart mr-2"></i> 导出区间分析
+    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 数据概览卡片（固定高度，不滚动） -->
+        <div class="bg-white rounded-xl shadow-card card-transition hover:shadow-card-hover overflow-hidden h-[38vh]">
+            <div class="bg-primary text-white px-6 py-4">
+                <h2 class="text-xl font-semibold flex items-center">
+                    <i class="fa fa-bar-chart mr-2.5"></i> 数据概览
+                </h2>
+            </div>
+            <div class="p-5">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="stat-card-shadow rounded-lg p-4 bg-white transform hover:scale-[1.02] transition-transform">
+                        <div class="text-neutral-dark text-sm mb-1">总成本</div>
+                        <div id="totalCost" class="text-primary text-2xl font-bold">0</div>
+                        <div class="text-xs text-gray-400 mt-1">元</div>
+                    </div>
+                    
+                    <div class="stat-card-shadow rounded-lg p-4 bg-white transform hover:scale-[1.02] transition-transform">
+                        <div class="text-neutral-dark text-sm mb-1">平均面积</div>
+                        <div id="avgArea" class="text-primary text-2xl font-bold">0</div>
+                        <div class="text-xs text-gray-400 mt-1">平方米</div>
+                    </div>
+                    
+                    <div class="stat-card-shadow rounded-lg p-4 bg-white transform hover:scale-[1.02] transition-transform">
+                        <div class="text-neutral-dark text-sm mb-1">总销售额</div>
+                        <div id="totalSales" class="text-primary text-2xl font-bold">0</div>
+                        <div class="text-xs text-gray-400 mt-1">元</div>
+                    </div>
+                    
+                    <div class="stat-card-shadow rounded-lg p-4 bg-white transform hover:scale-[1.02] transition-transform">
+                        <div class="text-neutral-dark text-sm mb-1">平均观众数</div>
+                        <div id="avgVisitors" class="text-primary text-2xl font-bold">0</div>
+                        <div class="text-xs text-gray-400 mt-1">人</div>
+                    </div>
+                </div>
+                
+                <!-- 数据更新时间 -->
+                <div class="mt-4 text-center text-xs text-gray-400">
+                    <span id="updateTime">数据尚未生成</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧数据展示区（独立滚动，不影响左侧） -->
+    <div class="lg:w-2/3 w-full space-y-6">
+        <!-- 数据表格卡片 -->
+        <div class="bg-white rounded-xl shadow-card card-transition hover:shadow-card-hover overflow-hidden">
+            <div class="bg-primary text-white px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-semibold flex items-center">
+                    <i class="fa fa-table mr-2.5"></i> 参展商数据
+                </h2>
+                <div class="flex items-center space-x-2">
+                    <div class="relative">
+                        <input type="text" id="tableSearch" placeholder="搜索数据..." 
+                            class="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary">
+                        <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    </div>
+                    <select id="tableSort" class="text-sm rounded-lg border border-gray-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary">
+                        <option value="">排序方式</option>
+                        <option value="random">随机排序</option>
+                        <option value="area-asc">面积 (升序)</option>
+                        <option value="area-desc">面积 (降序)</option>
+                        <option value="cost-asc">租赁支出 (升序)</option>
+                        <option value="cost-desc">租赁支出 (降序)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="p-5">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200" id="dataTable">
+                        <thead class="bg-primary/5">
+                            <tr>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">类别</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">面积(㎡)</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">人员</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">租赁支出</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">搭建支出</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">物流支出</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">广告支出</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">餐饮支出</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">出行支出</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">销售额</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">观众数</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">专业性</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">洽谈数</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">洽谈成功率</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">订单数</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">预计销售额</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">知名度提升</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">开拓市场</th>
+                                <th class="px-3 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">结识客户</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- 数据将通过JavaScript生成 -->
+                            <tr class="text-center">
+                                <td colspan="19" class="px-3 py-8 text-gray-500">
+                                    <div class="flex flex-col items-center">
+                                        <div class="w-16 h-16 mb-3 text-gray-300">
+                                            <i class="fa fa-file-text-o text-4xl"></i>
+                                        </div>
+                                        <p>点击"生成数据"按钮开始生成参展商数据</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 表格分页 -->
+                <div class="mt-4 flex justify-between items-center text-sm">
+                    <div class="text-gray-500">
+                        显示 <span id="showingCount">0</span> 条数据
+                    </div>
+                    <div class="flex space-x-1">
+                        <button id="prevPage" class="px-3 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fa fa-chevron-left"></i>
+                        </button>
+                        <span id="pageInfo" class="px-3 py-1 text-gray-700">第 1 页</span>
+                        <button id="nextPage" class="px-3 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fa fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 数据区间分析列表卡片 -->
+        <div class="bg-white rounded-xl shadow-card card-transition hover:shadow-card-hover overflow-hidden">
+            <div class="bg-primary text-white px-6 py-4">
+                <h2 class="text-xl font-semibold flex items-center">
+                    <i class="fa fa-list-ol mr-2.5"></i> 数据区间分析
+                </h2>
+            </div>
+            <div class="p-5">
+                <div class="overflow-x-auto">
+                    <div id="rangeAnalysisContainer" class="space-y-6">
+                        <!-- 数据将通过JavaScript生成 -->
+                        <div class="text-center py-8 text-gray-500">
+                            <div class="w-16 h-16 mb-3 text-gray-300 mx-auto">
+                                <i class="fa fa-bar-chart text-4xl"></i>
+                            </div>
+                            <p>生成数据后将显示区间分析</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 图表卡片 -->
+        <div class="bg-white rounded-xl shadow-card card-transition hover:shadow-card-hover overflow-hidden">
+            <div class="bg-primary text-white px-6 py-4">
+                <h2 class="text-xl font-semibold flex items-center">
+                    <i class="fa fa-pie-chart mr-2.5"></i> 支出分布分析
+                </h2>
+            </div>
+            <div class="p-5">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-2">
+                        <canvas id="costChart" height="250"></canvas>
+                    </div>
+                    <div class="flex flex-col justify-center">
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-700 mb-2">支出占比分析</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>租赁支出</span>
+                                            <span id="rentPercent" class="font-medium">0%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div id="rentBar" class="bg-primary h-2 rounded-full" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>搭建支出</span>
+                                            <span id="setupPercent" class="font-medium">0%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div id="setupBar" class="bg-accent h-2 rounded-full" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>物流支出</span>
+                                            <span id="logisticsPercent" class="font-medium">0%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div id="logisticsBar" class="bg-secondary h-2 rounded-full" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>广告支出</span>
+                                            <span id="adPercent" class="font-medium">0%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div id="adBar" class="bg-purple-500 h-2 rounded-full" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="pt-2">
+                                <h3 class="text-sm font-medium text-gray-700 mb-2">关键指标</h3>
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600">平均租赁成本</span>
+                                        <span id="avgRentCost" class="font-medium">¥0</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600">平均单家总支出</span>
+                                        <span id="avgTotalCost" class="font-medium">¥0</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600">销售额与成本比</span>
+                                        <span id="salesCostRatio" class="font-medium">0x</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-gray-200 mt-8">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="text-center md:text-left mb-4 md:mb-0">
+                    <p class="text-gray-500 text-sm">© 2023 天津展会参展商数据分析工具</p>
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                        <i class="fa fa-question-circle"></i> 帮助中心
+                    </a>
+                    <a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                        <i class="fa fa-file-text-o"></i> 使用说明
+                    </a>
+                    <a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                        <i class="fa fa-envelope-o"></i> 联系我们
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 帮助模态框 -->
+    <div id="helpModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto mx-4 transform transition-all animate-fade-in">
+            <div class="p-5 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-lg font-semibold">使用帮助</h3>
+                <button id="closeHelpModal" class="text-gray-400 hover:text-gray-600">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <h4 class="font-medium text-primary mb-2">1. 生成数据</h4>
+                    <p class="text-sm text-gray-600">在左侧面板设置相关参数后，点击"生成数据"按钮即可生成参展商数据。您可以通过"数值输入"和"占比设置"两种方式配置参数。</p>
+                </div>
+                <div>
+                    <h4 class="font-medium text-primary mb-2">2. 面积占比设置</h4>
+                    <p class="text-sm text-gray-600">在"数值输入"面板中，您可以设置三个面积区间的占比：小面积、中面积和大面积。这些区间会根据您设置的展位面积范围自动调整。拖动滑块调整各区间占比，系统会自动保持总占比为100%。</p>
+                </div>
+                <div>
+                    <h4 class="font-medium text-primary mb-2">3. 查看数据</h4>
+                    <p class="text-sm text-gray-600">生成的数据将显示在右侧表格中，您可以通过搜索框搜索特定数据，或通过排序下拉菜单对数据进行排序。</p>
+                </div>
+                <div>
+                    <h4 class="font-medium text-primary mb-2">4. 数据区间分析</h4>
+                    <p class="text-sm text-gray-600">数据区间分析列表展示了从面积(㎡)到出行支出的每列数据分布情况，每列数据被分成4个等宽区间，并计算每个区间的占比。区间边界会自动调整为整十、整百或整千的整数，便于数据解读。</p>
+                </div>
+                <div>
+                    <h4 class="font-medium text-primary mb-2">5. 导出数据</h4>
+                    <p class="text-sm text-gray-600">点击"导出为Excel"按钮可以将当前生成的数据导出为Excel文件，方便进行离线分析。</p>
+                </div>
+                <div>
+                    <h4 class="font-medium text-primary mb-2">6. 数据分析</h4>
+                    <p class="text-sm text-gray-600">支出分布图表和数据概览区域将展示关键统计信息，帮助您快速了解数据整体情况。</p>
+                </div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded-b-xl text-center">
+                <button id="gotItBtn" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-colors">
+                    我知道了
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载指示器 -->
+    <div id="loader" class="fixed inset-0 bg-white/80 flex items-center justify-center z-50 hidden">
+        <div class="flex flex-col items-center">
+            <div class="loader w-12 h-12 border-4 border-gray-200 rounded-full mb-4"></div>
+            <p class="text-gray-600">正在生成数据，请稍候...</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 全局变量
+            let allData = [];
+            let currentPage = 1;
+            const itemsPerPage = 10;
+            let areaRatioRules = [];
+            
+            // 初始化选项卡切换
+            const tabButtons = document.querySelectorAll('#settingsTabs button');
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // 移除所有选项卡的选中状态
+                    tabButtons.forEach(btn => {
+                        btn.classList.remove('border-primary', 'text-primary');
+                        btn.classList.add('border-transparent', 'text-neutral-dark', 'hover:text-primary', 'hover:border-primary/30');
+                        btn.setAttribute('aria-selected', 'false');
+                    });
+                    
+                    // 设置当前选项卡为选中状态
+                    button.classList.remove('border-transparent', 'text-neutral-dark', 'hover:text-primary', 'hover:border-primary/30');
+                    button.classList.add('border-primary', 'text-primary');
+                    button.setAttribute('aria-selected', 'true');
+                    
+                    // 隐藏所有内容面板
+                    document.querySelectorAll('.tab-content').forEach(panel => {
+                        panel.classList.add('hidden');
+                    });
+                    
+                    // 显示对应的内容面板
+                    const targetPanel = document.getElementById(button.getAttribute('data-tab'));
+                    targetPanel.classList.remove('hidden');
+                });
+            });
+            
+            // 初始化高级设置折叠面板
+            const advancedToggle = document.getElementById('advancedSettingsToggle');
+            const advancedPanel = document.getElementById('advancedSettingsPanel');
+            const advancedIcon = document.getElementById('advancedSettingsIcon');
+            
+            advancedToggle.addEventListener('click', () => {
+                advancedPanel.classList.toggle('hidden');
+                advancedIcon.classList.toggle('rotate-180');
+            });
+            
+            // 初始化范围输入值显示
+            initRangeInputs();
+            
+            // 初始化帮助模态框
+            const helpBtn = document.getElementById('helpBtn');
+            const helpModal = document.getElementById('helpModal');
+            const closeHelpModal = document.getElementById('closeHelpModal');
+            const gotItBtn = document.getElementById('gotItBtn');
+            
+            const openHelpModal = () => helpModal.classList.remove('hidden');
+            const closeHelpModalFunc = () => helpModal.classList.add('hidden');
+            
+            helpBtn.addEventListener('click', openHelpModal);
+            closeHelpModal.addEventListener('click', closeHelpModalFunc);
+            gotItBtn.addEventListener('click', closeHelpModalFunc);
+            
+            // 点击模态框外部关闭
+            helpModal.addEventListener('click', (e) => {
+                if (e.target === helpModal) closeHelpModalFunc();
+            });
+            
+            // 表格搜索功能
+            document.getElementById('tableSearch').addEventListener('input', function() {
+                currentPage = 1; // 重置到第一页
+                renderTable();
+            });
+            
+            // 表格排序功能
+            document.getElementById('tableSort').addEventListener('change', function() {
+                currentPage = 1; // 重置到第一页
+                renderTable();
+            });
+            
+            // 分页功能
+            document.getElementById('prevPage').addEventListener('click', function() {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderTable();
+                }
+            });
+            
+            document.getElementById('nextPage').addEventListener('click', function() {
+                const filteredData = getFilteredData();
+                const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+                
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderTable();
+                }
+            });
+            
+            // 绑定重置面积占比按钮事件
+            document.getElementById('resetAreaRatios').addEventListener('click', function() {
+                document.getElementById('areaRatio1').value = 50;
+                document.getElementById('areaRatio2').value = 30;
+                document.getElementById('areaRatio3').value = 20;
+                updateAreaRatios();
+                updateAreaRangeLabels();
+            });
+            
+            // 更新面积区间标签
+            function updateAreaRangeLabels() {
+                const minArea = parseInt(document.getElementById('minArea').value) || 9;
+                const maxArea = parseInt(document.getElementById('maxArea').value) || 300;
+                
+                // 计算区间分界点 - 调整为让大面积区间更接近最大值
+                // 小面积区间占25%，中面积区间占45%，大面积区间占30%
+                const quarterPoint = Math.round(minArea + (maxArea - minArea) * 0.25);
+                const twoThirdsPoint = Math.round(minArea + (maxArea - minArea) * 0.7); // 大面积区间从70%处开始
+                
+                // 更新标签
+                document.getElementById('areaRange1Label').textContent = `小面积区间 (${minArea}-${quarterPoint}㎡)`;
+                document.getElementById('areaRange2Label').textContent = `中面积区间 (${quarterPoint+1}-${twoThirdsPoint}㎡)`;
+                document.getElementById('areaRange3Label').textContent = `大面积区间 (>${twoThirdsPoint}㎡)`;
+                
+                // 更新面积区间占比规则
+                areaRatioRules = [
+                    { min: minArea, max: quarterPoint, targetRatio: parseInt(document.getElementById('areaRatio1').value) / 100 },  // 使用用户设置的小面积占比
+                    { min: quarterPoint+1, max: twoThirdsPoint, targetRatio: parseInt(document.getElementById('areaRatio2').value) / 100 }, // 使用用户设置的中面积占比
+                    { min: twoThirdsPoint+1, max: maxArea, targetRatio: parseInt(document.getElementById('areaRatio3').value) / 100 }  // 使用用户设置的大面积占比
+                ];
+            }
+            
+            // 初始化范围输入值显示
+            function initRangeInputs() {
+                // 面积范围输入
+                const minArea = document.getElementById('minArea');
+                const maxArea = document.getElementById('maxArea');
+                
+                minArea.addEventListener('input', function() {
+                    // 确保最小值不小于9
+                    if (parseInt(this.value) < 1) {
+                        this.value = 1;
+                    }
+                    // 确保最小值不大于最大值
+                    if (parseInt(this.value) > parseInt(maxArea.value)) {
+                        maxArea.value = this.value;
+                    }
+                    updateAreaRangeLabels();
+                });
+                
+                maxArea.addEventListener('input', function() {
+                    // 确保最大值不小于最小值
+                    if (parseInt(this.value) < parseInt(minArea.value)) {
+                        minArea.value = this.value;
+                    }
+                    updateAreaRangeLabels();
+                });
+                
+                // 展位租赁单价范围
+                const minRentPrice = document.getElementById('minRentPrice');
+                const maxRentPrice = document.getElementById('maxRentPrice');
+                const minRentPriceValue = document.getElementById('minRentPriceValue');
+                const maxRentPriceValue = document.getElementById('maxRentPriceValue');
+                
+                minRentPrice.addEventListener('input', function() {
+                    minRentPriceValue.textContent = this.value;
+                    // 确保最小值不大于最大值
+                    if (parseInt(this.value) > parseInt(maxRentPrice.value)) {
+                        maxRentPrice.value = this.value;
+                        maxRentPriceValue.textContent = this.value;
+                    }
+                });
+                
+                maxRentPrice.addEventListener('input', function() {
+                    maxRentPriceValue.textContent = this.value;
+                    // 确保最大值不小于最小值
+                    if (parseInt(this.value) < parseInt(minRentPrice.value)) {
+                        minRentPrice.value = this.value;
+                        minRentPriceValue.textContent = this.value;
+                    }
+                });
+                
+                // 展位搭建占租赁费用比例范围
+                const minSetupPercentage = document.getElementById('minSetupPercentage');
+                const maxSetupPercentage = document.getElementById('maxSetupPercentage');
+                const minSetupPercentageValue = document.getElementById('minSetupPercentageValue');
+                const maxSetupPercentageValue = document.getElementById('maxSetupPercentageValue');
+                
+                minSetupPercentage.addEventListener('input', function() {
+                    minSetupPercentageValue.textContent = this.value + '%';
+                    // 确保最小值不大于最大值
+                    if (parseInt(this.value) > parseInt(maxSetupPercentage.value)) {
+                        maxSetupPercentage.value = this.value;
+                        maxSetupPercentageValue.textContent = this.value + '%';
+                    }
+                });
+                
+                maxSetupPercentage.addEventListener('input', function() {
+                    maxSetupPercentageValue.textContent = this.value + '%';
+                    // 确保最大值不小于最小值
+                    if (parseInt(this.value) < parseInt(minSetupPercentage.value)) {
+                        minSetupPercentage.value = this.value;
+                        minSetupPercentageValue.textContent = this.value + '%';
+                    }
+                });
+                
+                // 运输物流占租赁费用比例范围
+                const minLogisticsPercentage = document.getElementById('minLogisticsPercentage');
+                const maxLogisticsPercentage = document.getElementById('maxLogisticsPercentage');
+                const minLogisticsPercentageValue = document.getElementById('minLogisticsPercentageValue');
+                const maxLogisticsPercentageValue = document.getElementById('maxLogisticsPercentageValue');
+                
+                minLogisticsPercentage.addEventListener('input', function() {
+                    minLogisticsPercentageValue.textContent = this.value + '%';
+                    if (parseInt(this.value) > parseInt(maxLogisticsPercentage.value)) {
+                        maxLogisticsPercentage.value = this.value;
+                        maxLogisticsPercentageValue.textContent = this.value + '%';
+                    }
+                });
+                
+                maxLogisticsPercentage.addEventListener('input', function() {
+                    maxLogisticsPercentageValue.textContent = this.value + '%';
+                    if (parseInt(this.value) < parseInt(minLogisticsPercentage.value)) {
+                        minLogisticsPercentage.value = this.value;
+                        minLogisticsPercentageValue.textContent = this.value + '%';
+                    }
+                });
+                
+                // 广告宣传占租赁费用比例范围
+                const minAdPercentage = document.getElementById('minAdPercentage');
+                const maxAdPercentage = document.getElementById('maxAdPercentage');
+                const minAdPercentageValue = document.getElementById('minAdPercentageValue');
+                const maxAdPercentageValue = document.getElementById('maxAdPercentageValue');
+                
+                minAdPercentage.addEventListener('input', function() {
+                    minAdPercentageValue.textContent = this.value + '%';
+                    if (parseInt(this.value) > parseInt(maxAdPercentage.value)) {
+                        maxAdPercentage.value = this.value;
+                        maxAdPercentageValue.textContent = this.value + '%';
+                    }
+                });
+                
+                maxAdPercentage.addEventListener('input', function() {
+                    maxAdPercentageValue.textContent = this.value + '%';
+                    if (parseInt(this.value) < parseInt(minAdPercentage.value)) {
+                        minAdPercentage.value = this.value;
+                        minAdPercentageValue.textContent = this.value + '%';
+                    }
+                });
+                
+                // 餐饮支出人均标准范围
+                const minFoodPerPerson = document.getElementById('minFoodPerPerson');
+                const maxFoodPerPerson = document.getElementById('maxFoodPerPerson');
+                const minFoodPerPersonValue = document.getElementById('minFoodPerPersonValue');
+                const maxFoodPerPersonValue = document.getElementById('maxFoodPerPersonValue');
+                
+                minFoodPerPerson.addEventListener('input', function() {
+                    minFoodPerPersonValue.textContent = this.value;
+                    if (parseInt(this.value) > parseInt(maxFoodPerPerson.value)) {
+                        maxFoodPerPerson.value = this.value;
+                        maxFoodPerPersonValue.textContent = this.value;
+                    }
+                });
+                
+                maxFoodPerPerson.addEventListener('input', function() {
+                    maxFoodPerPersonValue.textContent = this.value;
+                    if (parseInt(this.value) < parseInt(minFoodPerPerson.value)) {
+                        minFoodPerPerson.value = this.value;
+                        minFoodPerPersonValue.textContent = this.value;
+                    }
+                });
+                
+                // 出行支出人均标准范围
+                const minTravelPerPerson = document.getElementById('minTravelPerPerson');
+                const maxTravelPerPerson = document.getElementById('maxTravelPerPerson');
+                const minTravelPerPersonValue = document.getElementById('minTravelPerPersonValue');
+                const maxTravelPerPersonValue = document.getElementById('maxTravelPerPersonValue');
+                
+                minTravelPerPerson.addEventListener('input', function() {
+                    minTravelPerPersonValue.textContent = this.value;
+                    if (parseInt(this.value) > parseInt(maxTravelPerPerson.value)) {
+                        maxTravelPerPerson.value = this.value;
+                        maxTravelPerPersonValue.textContent = this.value;
+                    }
+                });
+                
+                maxTravelPerPerson.addEventListener('input', function() {
+                    maxTravelPerPersonValue.textContent = this.value;
+                    if (parseInt(this.value) < parseInt(minTravelPerPerson.value)) {
+                        minTravelPerPerson.value = this.value;
+                        minTravelPerPersonValue.textContent = this.value;
+                    }
+                });
+            }
+            
+            // 获取过滤后的数据
+            function getFilteredData() {
+                const searchTerm = document.getElementById('tableSearch').value.toLowerCase();
+                const sortOption = document.getElementById('tableSort').value;
+                
+                // 过滤数据
+                let filtered = allData.filter(item => {
+                    // 搜索所有字段
+                    return Object.values(item).some(value => 
+                        String(value).toLowerCase().includes(searchTerm)
+                    );
+                });
+                
+                // 排序数据
+                if (sortOption) {
+                    if (sortOption === 'random') {
+                        // Fisher-Yates 洗牌算法实现随机排序
+                        for (let i = filtered.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+                        }
+                    } else {
+                        const [field, order] = sortOption.split('-');
+                        filtered.sort((a, b) => {
+                            let valueA, valueB;
+                            
+                            switch(field) {
+                                case 'area':
+                                    valueA = a.area;
+                                    valueB = b.area;
+                                    break;
+                                case 'cost':
+                                    valueA = a.rentCost;
+                                    valueB = b.rentCost;
+                                    break;
+                                default:
+                                    return 0;
+                            }
+                            
+                            return order === 'asc' ? valueA - valueB : valueB - valueA;
+                        });
+                    }
+                }
+                
+                return filtered;
+            }
+            
+            // 渲染表格数据
+            function renderTable() {
+                const tableBody = document.getElementById('tableBody');
+                const filteredData = getFilteredData();
+                
+                // 计算分页
+                const startIndex = (currentPage - 1) * itemsPerPage;
+                const endIndex = startIndex + itemsPerPage;
+                const currentData = filteredData.slice(startIndex, endIndex);
+                const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+                
+                // 更新分页按钮状态
+                document.getElementById('prevPage').disabled = currentPage === 1;
+                document.getElementById('nextPage').disabled = currentPage === totalPages || totalPages === 0;
+                document.getElementById('pageInfo').textContent = `第 ${currentPage} 页`;
+                document.getElementById('showingCount').textContent = filteredData.length;
+                
+                // 清空表格
+                tableBody.innerHTML = '';
+                
+                // 如果没有数据
+                if (currentData.length === 0) {
+                    tableBody.innerHTML = `
+                        <tr class="text-center">
+                            <td colspan="19" class="px-3 py-8 text-gray-500">
+                                <div class="flex flex-col items-center">
+                                    <div class="w-16 h-16 mb-3 text-gray-300">
+                                        <i class="fa fa-search text-4xl"></i>
+                                    </div>
+                                    <p>未找到匹配的数据</p>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    
+                    // 如果有数据但当前页没有显示，仍然显示总计行
+                    if (allData.length > 0) {
+                        // 计算合计值（使用所有数据）
+                        const totals = allData.reduce((acc, item) => {
+                            acc.area += item.area;
+                            acc.staff += item.staff;
+                            acc.rentCost += item.rentCost;
+                            acc.setupCost += Math.round(item.setupCost);
+                            acc.logisticsCost += Math.round(item.logisticsCost);
+                            acc.adCost += Math.round(item.adCost);
+                            acc.foodCost += Math.round(item.foodCost);
+                            acc.travelCost += Math.round(item.travelCost);
+                            acc.dailySales += item.dailySales;
+                            acc.visitors += item.visitors;
+                            acc.negotiations += item.negotiations;
+                            acc.orders += item.orders;
+                            acc.expectedSales += item.expectedSales;
+                            return acc;
+                        }, {
+                            area: 0,
+                            staff: 0,
+                            rentCost: 0,
+                            setupCost: 0,
+                            logisticsCost: 0,
+                            adCost: 0,
+                            foodCost: 0,
+                            travelCost: 0,
+                            dailySales: 0,
+                            visitors: 0,
+                            negotiations: 0,
+                            orders: 0,
+                            expectedSales: 0
+                        });
+                        
+                        const totalRow = document.createElement('tr');
+                        totalRow.className = 'bg-primary text-white font-semibold';
+                        
+                        totalRow.innerHTML = `
+                            <td class="px-3 py-3 whitespace-nowrap">总计 (${allData.length}家)</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.area.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.staff.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${Math.round(totals.rentCost).toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.setupCost.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.logisticsCost.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.adCost.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.foodCost.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.travelCost.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.dailySales.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.visitors.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">-</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.negotiations.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">-</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.orders.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">${totals.expectedSales.toLocaleString()}</td>
+                            <td class="px-3 py-3 whitespace-nowrap">-</td>
+                            <td class="px-3 py-3 whitespace-nowrap">-</td>
+                            <td class="px-3 py-3 whitespace-nowrap">-</td>
+                        `;
+                        
+                        // 创建分隔行
+                        const separatorRow = document.createElement('tr');
+                        separatorRow.innerHTML = `<td colspan="19" class="py-1 border-t border-b border-gray-200"></td>`;
+                        
+                        // 添加分隔行和合计行
+                        tableBody.appendChild(separatorRow);
+                        tableBody.appendChild(totalRow);
+                    }
+                    
+                    return;
+                }
+                
+                // 填充表格
+                currentData.forEach((item, index) => {
+                    const row = document.createElement('tr');
+                    row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                    row.classList.add('hover:bg-primary-light/30');
+                    
+                    row.innerHTML = `
+                        <td class="px-3 py-3 whitespace-nowrap">${item.category}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.area}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.staff}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.rentCost.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${Math.round(item.setupCost).toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${Math.round(item.logisticsCost).toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${Math.round(item.adCost).toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${Math.round(item.foodCost).toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${Math.round(item.travelCost).toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.dailySales.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.visitors}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.professionalism}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.negotiations}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.successRate}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.orders}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.expectedSales.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.awareness}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.newMarket}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${item.newClients}</td>
+                    `;
+                    
+                    tableBody.appendChild(row);
+                });
+                
+                // 添加合计行（所有数据的总计）
+                if (allData.length > 0) {
+                    // 计算合计值（使用所有数据）
+                    const totals = allData.reduce((acc, item) => {
+                        acc.area += item.area;
+                        acc.staff += item.staff;
+                        acc.rentCost += item.rentCost;
+                        acc.setupCost += Math.round(item.setupCost);
+                        acc.logisticsCost += Math.round(item.logisticsCost);
+                        acc.adCost += Math.round(item.adCost);
+                        acc.foodCost += Math.round(item.foodCost);
+                        acc.travelCost += Math.round(item.travelCost);
+                        acc.dailySales += item.dailySales;
+                        acc.visitors += item.visitors;
+                        acc.negotiations += item.negotiations;
+                        acc.orders += item.orders;
+                        acc.expectedSales += item.expectedSales;
+                        return acc;
+                    }, {
+                        area: 0,
+                        staff: 0,
+                        rentCost: 0,
+                        setupCost: 0,
+                        logisticsCost: 0,
+                        adCost: 0,
+                        foodCost: 0,
+                        travelCost: 0,
+                        dailySales: 0,
+                        visitors: 0,
+                        negotiations: 0,
+                        orders: 0,
+                        expectedSales: 0
+                    });
+                    
+                    const totalRow = document.createElement('tr');
+                    totalRow.className = 'bg-primary text-white font-semibold';
+                    
+                    totalRow.innerHTML = `
+                        <td class="px-3 py-3 whitespace-nowrap">总计 (${allData.length}家)</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.area.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.staff.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${Math.round(totals.rentCost).toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.setupCost.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.logisticsCost.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.adCost.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.foodCost.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.travelCost.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.dailySales.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.visitors.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">-</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.negotiations.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">-</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.orders.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">${totals.expectedSales.toLocaleString()}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">-</td>
+                        <td class="px-3 py-3 whitespace-nowrap">-</td>
+                        <td class="px-3 py-3 whitespace-nowrap">-</td>
+                    `;
+                    
+                    // 创建分隔行
+                    const separatorRow = document.createElement('tr');
+                    separatorRow.innerHTML = `<td colspan="19" class="py-1 border-t border-b border-gray-200"></td>`;
+                    
+                    // 添加分隔行和合计行
+                    tableBody.appendChild(separatorRow);
+                    tableBody.appendChild(totalRow);
+                }
+            }
+            
+            // 生成数据函数
+            function generateData() {
+                const exhibitorCount = parseInt(document.getElementById('exhibitorCount').value);
+                // const minArea = parseInt(document.getElementById('minArea').value);
+                // const maxArea = parseInt(document.getElementById('maxArea').value);
+                const minArea = Math.max(parseInt(document.getElementById('minArea').value) || 9, 9);
+                const maxArea = parseInt(document.getElementById('maxArea').value);
+                const minStaff = parseInt(document.getElementById('minStaff').value);
+                const maxStaff = parseInt(document.getElementById('maxStaff').value);
+                
+                // 修改：获取租赁单价范围
+                const minRentPrice = parseInt(document.getElementById('minRentPrice').value);
+                const maxRentPrice = parseInt(document.getElementById('maxRentPrice').value);
+                
+                // 获取面积占比设置
+                const areaRatio1 = parseInt(document.getElementById('areaRatio1').value) / 100; // 小面积占比
+                const areaRatio2 = parseInt(document.getElementById('areaRatio2').value) / 100; // 中面积占比
+                const areaRatio3 = parseInt(document.getElementById('areaRatio3').value) / 100; // 大面积占比
+                
+                // 更新面积区间占比规则
+                updateAreaRangeLabels();
+                
+                // 获取新增的三个输入范围
+                const minNegotiations = parseInt(document.getElementById('minNegotiations').value);
+                const maxNegotiations = parseInt(document.getElementById('maxNegotiations').value);
+                const minOrders = parseInt(document.getElementById('minOrders').value);
+                const maxOrders = parseInt(document.getElementById('maxOrders').value);
+                const minExpectedSales = parseInt(document.getElementById('minExpectedSales').value);
+                const maxExpectedSales = parseInt(document.getElementById('maxExpectedSales').value);
+                
+                // 修改：从范围输入中获取值
+                const minSetupPercentage = parseInt(document.getElementById('minSetupPercentage').value) / 100;
+                const maxSetupPercentage = parseInt(document.getElementById('maxSetupPercentage').value) / 100;
+                const minLogisticsPercentage = parseInt(document.getElementById('minLogisticsPercentage').value) / 100;
+                const maxLogisticsPercentage = parseInt(document.getElementById('maxLogisticsPercentage').value) / 100;
+                const minAdPercentage = parseInt(document.getElementById('minAdPercentage').value) / 100;
+                const maxAdPercentage = parseInt(document.getElementById('maxAdPercentage').value) / 100;
+                const minFoodPerPerson = parseInt(document.getElementById('minFoodPerPerson').value);
+                const maxFoodPerPerson = parseInt(document.getElementById('maxFoodPerPerson').value);
+                const minTravelPerPerson = parseInt(document.getElementById('minTravelPerPerson').value);
+                const maxTravelPerPerson = parseInt(document.getElementById('maxTravelPerPerson').value);
+                
+                // 获取新增的5个滑块值
+                // const professionalismPercentage = parseInt(document.getElementById('professionalismPercentage').value) / 100;
+                // const successRatePercentage = parseInt(document.getElementById('successRatePercentage').value) / 100;
+                // const awarenessPercentage = parseInt(document.getElementById('awarenessPercentage').value) / 100;
+                // 获取专业性各级别百分比
+const professionalismLevel1 = parseInt(document.getElementById('professionalismLevel1').value) / 100;
+const professionalismLevel2 = parseInt(document.getElementById('professionalismLevel2').value) / 100;
+const professionalismLevel3 = parseInt(document.getElementById('professionalismLevel3').value) / 100;
+const professionalismLevel4 = parseInt(document.getElementById('professionalismLevel4').value) / 100;
+const professionalismLevel5 = parseInt(document.getElementById('professionalismLevel5').value) / 100;
+
+// 获取洽谈成功率各级别百分比
+const successRateLevel1 = parseInt(document.getElementById('successRateLevel1').value) / 100;
+const successRateLevel2 = parseInt(document.getElementById('successRateLevel2').value) / 100;
+const successRateLevel3 = parseInt(document.getElementById('successRateLevel3').value) / 100;
+const successRateLevel4 = parseInt(document.getElementById('successRateLevel4').value) / 100;
+const successRateLevel5 = parseInt(document.getElementById('successRateLevel5').value) / 100;
+
+// 获取知名度提升各级别百分比
+const awarenessLevel1 = parseInt(document.getElementById('awarenessLevel1').value) / 100;
+const awarenessLevel2 = parseInt(document.getElementById('awarenessLevel2').value) / 100;
+const awarenessLevel3 = parseInt(document.getElementById('awarenessLevel3').value) / 100;
+const awarenessLevel4 = parseInt(document.getElementById('awarenessLevel4').value) / 100;
+const awarenessLevel5 = parseInt(document.getElementById('awarenessLevel5').value) / 100;
+const newMarketPercentage = parseInt(document.getElementById('newMarketYes').value) / 100;
+const newClientsPercentage = parseInt(document.getElementById('newClientsYes').value) / 100;
+                // const categories = ['装修', '软件', '硬件', '服务', '制造', '教育', '医疗', '金融'];
+                const professionalismLevels = ['非常高', '较高', '一般', '较低','非常低'];
+                const successLevels = ['非常高', '较高', '一般', '较低','非常低'];
+                const awarenessLevels = ['非常显著', '较为显著', '一般', '不太显著','无影响'];
+                const yesNoOptions = ['是', '否'];
+
+
+// 获取用户输入的面积范围
+const minAreaInput = document.getElementById('minArea');
+const maxAreaInput = document.getElementById('maxArea');
+const exhibitorCountInput = document.getElementById('exhibitorCount');
+
+// 生成面积样本的主函数
+// 生成面积样本的主函数
+function generateAreaSamples() {
+    // 1. 解析用户输入，设置基础参数
+    const exhibitorCount = parseInt(exhibitorCountInput.value) || 0;
+    if (exhibitorCount <= 0) {
+        alert("请输入有效的参展商数量");
+        return [];
+    }
+    
+    // 最小面积不低于9，最大面积不低于最小面积
+    const minArea = Math.max(parseInt(minAreaInput.value) || 9, 9);
+    let maxArea = parseInt(maxAreaInput.value) || 300;
+    maxArea = Math.max(maxArea, minArea);
+
+    // 2. 动态计算每个规则的实际有效区间
+    const validAreaRules = [];
+
+    // 遍历规则模板，计算每个规则的实际生效范围
+    areaRatioRules.forEach((rule, index) => {
+        // 实际区间最小值 = 规则最小值
+        const ruleMin = rule.min;
+        // 实际区间最大值 = 规则最大值
+        const ruleMax = rule.max;
+        
+        // 计算当前规则与用户设置范围的重叠区间
+        const overlapMin = Math.max(ruleMin, minArea);
+        const overlapMax = Math.min(ruleMax, maxArea);
+        
+        // 仅保留"有效区间"（有重叠，且区间内有可生成的9的倍数）
+        if (overlapMin <= overlapMax) {
+            validAreaRules.push({
+                ...rule,
+                actualMin: overlapMin,      // 区间实际最小值（考虑用户设置的minArea）
+                actualMax: overlapMax       // 区间实际最大值（考虑用户设置的maxArea）
+            });
+        }
+    });
+
+    // 3. 补充"基础区间"的占比（总占比=100% - 所有有效规则占比之和）
+    const totalValidRatio = validAreaRules.reduce((sum, rule) => sum + rule.targetRatio, 0);
+    
+    // 如果用户设置的最小面积大于9，则不添加9㎡的基础区间
+    if (minArea <= 9) {
+        const baseRule = {
+            min: 9,
+            max: 9,
+            targetRatio: Math.max(0, 1 - totalValidRatio), // 确保占比不为负
+            actualMin: 9,
+            actualMax: 9 // 基础区间仅9㎡
+        };
+        // 将基础区间插入到最前面（确保9㎡优先计算）
+        validAreaRules.unshift(baseRule);
+    }
+
+    // 4. 计算每个有效区间的样本数量（按占比分配，修正总数偏差）
+    // 先按"参展商总数×目标占比"计算基础数量
+    let areaCountList = validAreaRules.map(rule => {
+        const count = Math.round(exhibitorCount * rule.targetRatio);
+        // 确保9平米区间至少有1个样本
+        return rule.actualMin === 9 && rule.actualMax === 9 ? Math.max(1, count) : count;
+    });
+    
+    let totalCount = areaCountList.reduce((sum, count) => sum + count, 0);
+
+    // 修正数量偏差（确保总样本数=参展商数量）
+    if (totalCount !== exhibitorCount) {
+        // 优先调整最后一个有效区间的数量
+        areaCountList[areaCountList.length - 1] += (exhibitorCount - totalCount);
+        
+        // 处理可能出现的负数情况
+        for (let i = areaCountList.length - 1; i >= 0; i--) {
+            if (areaCountList[i] < 0) {
+                const negativeNum = areaCountList[i];
+                areaCountList[i] = 0;
+                if (i > 0) areaCountList[i - 1] += negativeNum; // 将负数转移到前一个区间
+            }
+        }
+    }
+
+    // 5. 生成符合占比+9的倍数的面积样本
+    const areaSamples = [];
+    validAreaRules.forEach((rule, index) => {
+        const needCount = areaCountList[index];
+        if (needCount <= 0) return; // 跳过无需生成的区间
+        
+        // 计算当前区间内的9的倍数范围
+        const minMultiple = Math.ceil(rule.actualMin / 9) * 9;
+        const maxMultiple = Math.floor(rule.actualMax / 9) * 9;
+        const step = 9;
+        
+        // 若区间内无有效9倍数，跳过
+        if (minMultiple > maxMultiple) return;
+        
+        // 生成对应数量的面积样本
+        let currentCount = 0;
+        while (currentCount < needCount) {
+            // 对于9㎡区间，直接添加9
+            if (rule.actualMin === 9 && rule.actualMax === 9) {
+                areaSamples.push(9);
+                currentCount++;
+                continue;
+            }
+            
+            // 使用幂次分布增加随机性和差异性
+            // 指数越大，小面积出现概率越小，大面积出现概率越大
+            const exponent = 2.5; // 调整这个值可以改变分布的不均匀程度
+            const randomValue = Math.pow(Math.random(), exponent);
+            const stepCount = Math.floor((maxMultiple - minMultiple) / step) + 1;
+            const randomStep = Math.min(Math.floor(randomValue * stepCount), stepCount - 1);
+            const randomMultiple = minMultiple + randomStep * step;
+            
+            // 验证：确保生成的面积在用户设定的[minArea, maxArea]范围内
+            if (randomMultiple >= minArea && randomMultiple <= maxArea) {
+                areaSamples.push(randomMultiple);
+                currentCount++;
+            }
+        }
+    });
+
+    // 6. 兜底：若样本数量不足，补充生成9的倍数
+    while (areaSamples.length < exhibitorCount) {
+        // 计算当前范围内最小和最大的9的倍数
+        const maxPossible = Math.floor(maxArea / 9) * 9;
+        const minPossible = Math.ceil(minArea / 9) * 9;
+        
+        // 如果没有有效的9的倍数（不应该发生，因为前面已经处理过）
+        if (minPossible > maxPossible) {
+            // 确保生成的面积是9的倍数，即使超出用户设置的范围
+            const closestMultiple = Math.ceil(minArea / 9) * 9;
+            areaSamples.push(closestMultiple);
+        } else {
+            // 使用幂次分布增加随机性和差异性
+            const exponent = 2.5; // 与上面保持一致
+            const randomValue = Math.pow(Math.random(), exponent);
+            const stepCount = Math.floor((maxPossible - minPossible) / 9) + 1;
+            const randomStep = Math.min(Math.floor(randomValue * stepCount), stepCount - 1);
+            const randomMultiple = minPossible + randomStep * 9;
+            
+            areaSamples.push(randomMultiple);
+        }
+    }
+    
+    // 确保至少有一个9平米的面积（如果允许的话）
+    if (minArea <= 9 && maxArea >= 9 && !areaSamples.includes(9) && areaSamples.length > 0) {
+        // 随机替换一个元素为9
+        const randomIndex = Math.floor(Math.random() * areaSamples.length);
+        areaSamples[randomIndex] = 9;
+    }
+
+    return areaSamples;
+}
+// -------------------------- 动态面积占比控制结束 --------------------------
+                // 清空现有数据
+allData = [];
+
+let totalCost = 0;
+let totalArea = 0;
+let totalSales = 0;
+let totalVisitors = 0;
+let totalRentCost = 0;
+let totalSetupCost = 0;
+let totalLogisticsCost = 0;
+let totalAdCost = 0;
+
+// 获取用户输入的分类，如果没有输入或无效，则使用默认分类
+let categories = ['装修', '软件', '硬件', '服务', '制造', '教育', '医疗', '金融'];
+const customCategoriesInput = document.getElementById('customCategories');
+if (customCategoriesInput && customCategoriesInput.value.trim()) {
+    // 解析用户输入的分类（去除空格和空字符串）
+    const customCategories = customCategoriesInput.value.split(',')
+        .map(cat => cat.trim())
+        .filter(cat => cat);
+    // 如果解析后有有效分类，则使用用户输入的分类
+    if (customCategories.length > 0) {
+        categories = customCategories;
+    }
+}
+
+// 首先生成符合占比规则的面积样本数组
+const areaSamples = generateAreaSamples();
+
+for (let i = 0; i < exhibitorCount; i++) {
+    // 使用预先生成的面积样本，确保按照设定的概率分布和允许重复
+    const area = areaSamples[i] || 9; // 默认为9平米作为备用
+    
+    // 获取参展人员数量范围占比设置
+    const staffRange1 = parseInt(document.getElementById('staffRange1').value) || 80; // 10人以下占比
+    const staffRange2 = parseInt(document.getElementById('staffRange2').value) || 20; // 10人以上占比
+    
+    // 根据展位面积确定参展人员数量
+    let staff;
+    // 当面积为9平方米时，人员最大为3人（特殊情况）
+    if (area === 9) {
+        const maxStaffForSmallArea = Math.min(3, maxStaff);
+        const effectiveMinStaff = Math.min(minStaff, maxStaffForSmallArea);
+        staff = Math.floor(Math.random() * (maxStaffForSmallArea - effectiveMinStaff + 1)) + effectiveMinStaff;
+    } 
+    // 135平米以下的展位面积，只能匹配10人以下的参展人员
+    else if (area < 180) {
+        // 10人以下范围
+        const effectiveMin = Math.min(minStaff, 9);
+        const effectiveMax = Math.min(maxStaff, 9);
+        if (effectiveMin > effectiveMax) {
+            // 如果范围无效，使用默认范围
+            staff = Math.floor(Math.random() * (maxStaff - minStaff + 1)) + minStaff;
+        } else {
+            staff = Math.floor(Math.random() * (effectiveMax - effectiveMin + 1)) + effectiveMin;
+        }
+    } 
+    // 135平米以上的展位面积，根据占比决定使用哪个范围
+    else {
+        const rand = Math.random() * 100;
+        if (rand < staffRange1) {
+            // 10人以下范围
+            const effectiveMin = Math.min(minStaff, 9);
+            const effectiveMax = Math.min(maxStaff, 9);
+            if (effectiveMin > effectiveMax) {
+                // 如果范围无效，使用默认范围
+                staff = Math.floor(Math.random() * (maxStaff - minStaff + 1)) + minStaff;
+            } else {
+                staff = Math.floor(Math.random() * (effectiveMax - effectiveMin + 1)) + effectiveMin;
+            }
+        } else {
+            // 10人以上范围
+            const effectiveMin = Math.max(minStaff, 10);
+            const effectiveMax = maxStaff;
+            if (effectiveMin > effectiveMax) {
+                // 如果范围无效，使用默认范围
+                staff = Math.floor(Math.random() * (maxStaff - minStaff + 1)) + minStaff;
+            } else {
+                staff = Math.floor(Math.random() * (effectiveMax - effectiveMin + 1)) + effectiveMin;
+            }
+        }
+    }
+    
+    // 修改：从范围中随机选择租赁单价
+    const rentPrice = minRentPrice + Math.random() * (maxRentPrice - minRentPrice);
+    const rentCost = Math.round(area * rentPrice);
+    
+    // 修改：从范围中随机选择百分比
+    const setupPercentage = minSetupPercentage + Math.random() * (maxSetupPercentage - minSetupPercentage);
+    const logisticsPercentage = minLogisticsPercentage + Math.random() * (maxLogisticsPercentage - minLogisticsPercentage);
+    const adPercentage = minAdPercentage + Math.random() * (maxAdPercentage - minAdPercentage);
+    
+    // 修改：从范围中随机选择人均标准
+    const foodPerPerson = minFoodPerPerson + Math.random() * (maxFoodPerPerson - minFoodPerPerson);
+    const travelPerPerson = minTravelPerPerson + Math.random() * (maxTravelPerPerson - minTravelPerPerson);
+    
+    const setupCost = rentCost * setupPercentage;
+    const logisticsCost = rentCost * logisticsPercentage;
+    const adCost = rentCost * adPercentage;
+    const foodCost = staff * foodPerPerson;
+    const travelCost = staff * travelPerPerson;
+                    
+                    // 模拟销售额 - 与面积和随机因素相关
+                    const dailySales = Math.floor(area * (50 + Math.random() * 200));
+                    // 模拟观众数量 - 与面积和随机因素相关
+                    const visitors = Math.floor(area * (0.5 + Math.random() * 2));
+                    
+                    // 新增字段数据生成
+                    const negotiations = Math.floor(Math.random() * (maxNegotiations - minNegotiations + 1)) + minNegotiations;
+                    const orders = Math.floor(Math.random() * (maxOrders - minOrders + 1)) + minOrders;
+                    const expectedSales = Math.floor(Math.random() * (maxExpectedSales - minExpectedSales + 1)) + minExpectedSales;
+                    
+                    // 基于滑块占比生成分类数据
+                    // const professionalism = Math.random() < professionalismPercentage ? professionalismLevels[0] : professionalismLevels[Math.floor(Math.random() * 3) + 1];
+                    // const successRate = Math.random() < successRatePercentage ? successLevels[0] : successLevels[Math.floor(Math.random() * 3) + 1];
+                    // const awareness = Math.random() < awarenessPercentage ? awarenessLevels[0] : awarenessLevels[Math.floor(Math.random() * 3) + 1];
+// 基于各级别百分比生成专业性数据
+let professionalism;
+const rand1 = Math.random();
+if (rand1 < professionalismLevel1) professionalism = professionalismLevels[0];
+else if (rand1 < professionalismLevel1 + professionalismLevel2) professionalism = professionalismLevels[1];
+else if (rand1 < professionalismLevel1 + professionalismLevel2 + professionalismLevel3) professionalism = professionalismLevels[2];
+else if (rand1 < professionalismLevel1 + professionalismLevel2 + professionalismLevel3 + professionalismLevel4) professionalism = professionalismLevels[3];
+else professionalism = professionalismLevels[4];
+
+// 基于各级别百分比生成洽谈成功率数据
+let successRate;
+const rand2 = Math.random();
+if (rand2 < successRateLevel1) successRate = successLevels[0];
+else if (rand2 < successRateLevel1 + successRateLevel2) successRate = successLevels[1];
+else if (rand2 < successRateLevel1 + successRateLevel2 + successRateLevel3) successRate = successLevels[2];
+else if (rand2 < successRateLevel1 + successRateLevel2 + successRateLevel3 + successRateLevel4) successRate = successLevels[3];
+else successRate = successLevels[4];
+
+// 基于各级别百分比生成知名度提升数据
+let awareness;
+const rand3 = Math.random();
+if (rand3 < awarenessLevel1) awareness = awarenessLevels[0];
+else if (rand3 < awarenessLevel1 + awarenessLevel2) awareness = awarenessLevels[1];
+else if (rand3 < awarenessLevel1 + awarenessLevel2 + awarenessLevel3) awareness = awarenessLevels[2];
+else if (rand3 < awarenessLevel1 + awarenessLevel2 + awarenessLevel3 + awarenessLevel4) awareness = awarenessLevels[3];
+else awareness = awarenessLevels[4];
+                    const newMarket = Math.random() < newMarketPercentage ? yesNoOptions[0] : yesNoOptions[1];
+                    const newClients = Math.random() < newClientsPercentage ? yesNoOptions[0] : yesNoOptions[1];
+
+                    // 保存数据
+                    allData.push({
+                        category: categories[Math.floor(Math.random() * categories.length)],
+                        area,
+                        staff,
+                        rentCost,
+                        setupCost,
+                        logisticsCost,
+                        adCost,
+                        foodCost,
+                        travelCost,
+                        dailySales,
+                        visitors,
+                        professionalism,
+                        negotiations,
+                        successRate,
+                        orders,
+                        expectedSales,
+                        awareness,
+                        newMarket,
+                        newClients
+                    });
+
+                    // 更新统计信息
+                    const exhibitorTotalCost = rentCost + setupCost + logisticsCost + adCost + foodCost + travelCost;
+                    totalCost += exhibitorTotalCost;
+                    totalArea += area;
+                    totalSales += dailySales;
+                    totalVisitors += visitors;
+                    
+                    // 用于图表的统计数据
+                    totalRentCost += rentCost;
+                    totalSetupCost += setupCost;
+                    totalLogisticsCost += logisticsCost;
+                    totalAdCost += adCost;
+                }
+
+                // 更新概览数据
+                document.getElementById('totalCost').textContent = Math.round(totalCost).toLocaleString();
+                document.getElementById('avgArea').textContent = Math.round(totalArea / exhibitorCount);
+                document.getElementById('totalSales').textContent = totalSales.toLocaleString();
+                document.getElementById('avgVisitors').textContent = Math.round(totalVisitors / exhibitorCount);
+                
+                // 更新数据时间
+                const now = new Date();
+                document.getElementById('updateTime').textContent = `数据更新于: ${now.toLocaleString()}`;
+                
+                // 更新图表
+                updateChart(totalRentCost, totalSetupCost, totalLogisticsCost, totalAdCost, exhibitorCount, totalSales);
+                
+                // 生成数据区间分析
+                generateRangeAnalysis();
+                
+                // 渲染表格
+                currentPage = 1; // 重置到第一页
+                renderTable();
+            }
+
+            // 更新图表函数
+            function updateChart(totalRent, totalSetup, totalLogistics, totalAd, exhibitorCount, totalSales) {
+                const ctx = document.getElementById('costChart').getContext('2d');
+                const total = totalRent + totalSetup + totalLogistics + totalAd;
+                
+                // 计算百分比
+                const rentPercent = total > 0 ? Math.round((totalRent / total) * 100) : 0;
+                const setupPercent = total > 0 ? Math.round((totalSetup / total) * 100) : 0;
+                const logisticsPercent = total > 0 ? Math.round((totalLogistics / total) * 100) : 0;
+                const adPercent = total > 0 ? Math.round((totalAd / total) * 100) : 0;
+                
+                // 更新进度条
+                document.getElementById('rentPercent').textContent = `${rentPercent}%`;
+                document.getElementById('setupPercent').textContent = `${setupPercent}%`;
+                document.getElementById('logisticsPercent').textContent = `${logisticsPercent}%`;
+                document.getElementById('adPercent').textContent = `${adPercent}%`;
+                
+                // 带动画的进度条
+                animateProgressBar('rentBar', rentPercent);
+                animateProgressBar('setupBar', setupPercent);
+                animateProgressBar('logisticsBar', logisticsPercent);
+                animateProgressBar('adBar', adPercent);
+                
+                // 更新关键指标
+                const avgRentCost = exhibitorCount > 0 ? Math.round(totalRent / exhibitorCount) : 0;
+                const avgTotalCost = exhibitorCount > 0 ? Math.round((totalRent + totalSetup + totalLogistics + totalAd) / exhibitorCount) : 0;
+                const salesCostRatio = total > 0 ? (totalSales / total).toFixed(1) : 0;
+                
+                document.getElementById('avgRentCost').textContent = `¥${avgRentCost.toLocaleString()}`;
+                document.getElementById('avgTotalCost').textContent = `¥${avgTotalCost.toLocaleString()}`;
+                document.getElementById('salesCostRatio').textContent = `${salesCostRatio}x`;
+                
+                // 如果有现有的图表，销毁它
+                if (window.costChartInstance) {
+                    window.costChartInstance.destroy();
+                }
+                
+                // 图表数据
+                const labels = allData.slice(0, 10).map((_, index) => `参展商 ${index + 1}`);
+                const rentData = allData.slice(0, 10).map(item => item.rentCost);
+                const setupData = allData.slice(0, 10).map(item => item.setupCost);
+                const logisticsData = allData.slice(0, 10).map(item => item.logisticsCost);
+                const adData = allData.slice(0, 10).map(item => item.adCost);
+                
+                // 创建新图表
+                window.costChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: '租赁支出',
+                                data: rentData,
+                                backgroundColor: 'rgba(22, 93, 255, 0.7)',
+                                borderColor: 'rgba(22, 93, 255, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '搭建支出',
+                                data: setupData,
+                                backgroundColor: 'rgba(255, 125, 0, 0.7)',
+                                borderColor: 'rgba(255, 125, 0, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '物流支出',
+                                data: logisticsData,
+                                backgroundColor: 'rgba(54, 207, 201, 0.7)',
+                                borderColor: 'rgba(54, 207, 201, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '广告支出',
+                                data: adData,
+                                backgroundColor: 'rgba(168, 85, 247, 0.7)',
+                                borderColor: 'rgba(168, 85, 247, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 1000,
+                            easing: 'easeOutQuart'
+                        },
+                        scales: {
+                            x: {
+                                stacked: true,
+                                grid: {
+                                    display: false
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: '金额 (元)',
+                                    font: {
+                                        size: 11
+                                    }
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        if (value >= 1000) {
+                                            return value / 1000 + 'k';
+                                        }
+                                        return value;
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    boxWidth: 6
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(context.parsed.y);
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                });
+            }
+            
+            // 进度条动画
+            function animateProgressBar(elementId, targetWidth) {
+                const element = document.getElementById(elementId);
+                let currentWidth = 0;
+                const increment = targetWidth / 50;
+                const interval = setInterval(() => {
+                    currentWidth += increment;
+                    if (currentWidth >= targetWidth) {
+                        currentWidth = targetWidth;
+                        clearInterval(interval);
+                    }
+                    element.style.width = `${currentWidth}%`;
+                }, 15);
+            }
+            
+            // 导出为Excel
+            // 导出为Excel
+function exportToExcel() {
+    // 创建工作簿
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('参展商数据');
+
+    // 获取数据（包含搜索和排序）
+    const filteredData = getFilteredData();
+
+    // 准备数据
+    const exportData = filteredData.map(item => ({
+        '类别': item.category,
+        '面积(㎡)': item.area,
+        '人员': item.staff,
+        '租赁支出': item.rentCost,
+        '搭建支出': Math.round(item.setupCost),
+        '物流支出': Math.round(item.logisticsCost),
+        '广告支出': Math.round(item.adCost),
+        '餐饮支出': Math.round(item.foodCost),
+        '出行支出': Math.round(item.travelCost),
+        '销售额': item.dailySales,
+        '观众数': item.visitors,
+        '专业性': item.professionalism,
+        '洽谈数': item.negotiations,
+        '洽谈成功率': item.successRate,
+        '订单数': item.orders,
+        '预计销售额': item.expectedSales,
+        '知名度提升': item.awareness,
+        '开拓市场': item.newMarket,
+        '结识客户': item.newClients
+    }));
+
+    // 添加表头
+    const headers = Object.keys(exportData[0]);
+    worksheet.addRow(headers);
+
+    // 设置表头样式（加粗、居中、字号12）
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = {
+      
+        size: 10,
+        name: 'Arial'
+    };
+    headerRow.alignment = { 
+        vertical: 'middle', 
+        horizontal: 'center' 
+    };
+
+    // 添加数据行
+    exportData.forEach(item => {
+        const row = worksheet.addRow(Object.values(item));
+        
+        // 设置数据行样式（字号11、居中）
+        row.font = {
+            size: 10,
+            name: 'Arial'
+        };
+        row.alignment = { 
+            vertical: 'middle', 
+            horizontal: 'center' 
+        };
+    });
+
+    // 设置列宽
+    worksheet.columns = [
+        { header: '类别', key: '类别', width: 10 },
+        { header: '面积(㎡)', key: '面积(㎡)', width: 10 },
+        { header: '人员', key: '人员', width: 8 },
+        { header: '租赁支出', key: '租赁支出', width: 12 },
+        { header: '搭建支出', key: '搭建支出', width: 12 },
+        { header: '物流支出', key: '物流支出', width: 12 },
+        { header: '广告支出', key: '广告支出', width: 12 },
+        { header: '餐饮支出', key: '餐饮支出', width: 12 },
+        { header: '出行支出', key: '出行支出', width: 12 },
+        { header: '销售额', key: '销售额', width: 12 },
+        { header: '观众数', key: '观众数', width: 10 },
+        { header: '专业性', key: '专业性', width: 12 },
+        { header: '洽谈数', key: '洽谈数', width: 10 },
+        { header: '洽谈成功率', key: '洽谈成功率', width: 12 },
+        { header: '订单数', key: '订单数', width: 10 },
+        { header: '预计销售额', key: '预计销售额', width: 12 },
+        { header: '知名度提升', key: '知名度提升', width: 12 },
+        { header: '开拓市场', key: '开拓市场', width: 12 },
+        { header: '结识客户', key: '结识客户', width: 12 }
+    ];
+
+    // 导出Excel文件
+    workbook.xlsx.writeBuffer().then(buffer => {
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, '天津展会参展商数据.xlsx');
+    });
+}
+            
+            // 初始化面积区间标签
+            updateAreaRangeLabels();
+            
+            // 生成示例数据
+            generateData();
+            
+            // 绑定生成按钮事件
+            document.getElementById('generateBtn').addEventListener('click', function() {
+                // 显示加载指示器
+                document.getElementById('loader').classList.remove('hidden');
+                
+                // 模拟加载延迟，提升用户体验
+                setTimeout(() => {
+                    generateData();
+                    // 隐藏加载指示器
+                    document.getElementById('loader').classList.add('hidden');
+                }, 600);
+            });
+            
+            // 绑定导出按钮事件
+            document.getElementById('exportBtn').addEventListener('click', function() {
+                if (allData.length === 0) {
+                    alert('请先生成数据再导出');
+                    return;
+                }
+                
+                // 显示加载指示器
+                document.getElementById('loader').classList.remove('hidden');
+                
+                // 模拟导出延迟
+                setTimeout(() => {
+                    exportToExcel();
+                    // 隐藏加载指示器
+                    document.getElementById('loader').classList.add('hidden');
+                }, 500);
+            });
+// 导出区间分析为Excel（每个字段一个Sheet）
+function exportAnalysisToExcel() {
+    if (allData.length === 0) {
+        alert('请先生成数据再导出区间分析');
+        return;
+    }
+    
+    // 显示加载指示器
+    document.getElementById('loader').classList.remove('hidden');
+    
+    setTimeout(() => {
+        // 创建工作簿
+        const workbook = new ExcelJS.Workbook();
+        
+        // 要分析的字段
+        const fields = [
+            { key: 'area', label: '面积', format: 'number', noRounding: true, unit: '㎡' },
+            { key: 'staff', label: '人员', format: 'number', noRounding: true, unit: '人' },
+            { key: 'rentCost', label: '租赁支出', format: 'currency', unit: '元' },
+            { key: 'setupCost', label: '搭建支出', format: 'currency', unit: '元' },
+            { key: 'logisticsCost', label: '物流支出', format: 'currency', unit: '元' },
+            { key: 'adCost', label: '广告支出', format: 'currency', unit: '元' },
+            { key: 'foodCost', label: '餐饮支出', format: 'currency', unit: '元' },
+            { key: 'travelCost', label: '出行支出', format: 'currency', unit: '元' }
+        ];
+        
+        // 为每个字段创建一个Sheet
+        fields.forEach(field => {
+            // 创建工作表
+            const worksheet = workbook.addWorksheet(field.label);
+            
+            // 获取字段的所有值
+            const values = allData.map(item => Math.round(item[field.key]));
+            
+            // 计算最小值和最大值
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            
+            let ranges = [];
+            
+            if (field.noRounding) {
+                // 面积和人员字段：直接计算区间，不取整
+                const range = max - min;
+                const interval = Math.ceil(range / 4);
+                
+                for (let i = 0; i < 4; i++) {
+                    const start = min + i * interval;
+                    let end;
+                    
+                    if (i === 3) {
+                        end = max;
+                    } else {
+                        end = min + (i + 1) * interval - 1;
+                    }
+                    
+                    const count = values.filter(v => {
+                        if (i === 0) return v >= start && v <= end;
+                        if (i === 3) return v >= start && v <= end;
+                        return v >= start && v <= end;
+                    }).length;
+                    
+                    const percentage = (count / values.length * 100).toFixed(1);
+                    
+                    ranges.push({
+                        start: i === 0 ? min : start,
+                        end: i === 3 ? max : end,
+                        count,
+                        percentage: parseFloat(percentage)
+                    });
+                }
+            } else {
+                // 金额字段：生成整齐的区间边界
+                const range = max - min;
+                let baseInterval;
+                if (range >= 10000) {
+                    baseInterval = 1000;
+                } else if (range >= 1000) {
+                    baseInterval = 100;
+                } else if (range >= 100) {
+                    baseInterval = 50;
+                } else {
+                    baseInterval = 10;
+                }
+                
+                let interval = Math.ceil(range / 4 / baseInterval) * baseInterval;
+                const adjustedMin = Math.floor(min / baseInterval) * baseInterval;
+                
+                for (let i = 0; i < 4; i++) {
+                    let start, end;
+                    
+                    if (i === 0) {
+                        start = min;
+                        end = adjustedMin + interval;
+                    } else if (i === 3) {
+                        start = adjustedMin + i * interval + 1;
+                        end = max;
+                    } else {
+                        start = adjustedMin + i * interval + 1;
+                        end = adjustedMin + (i + 1) * interval;
+                    }
+                    
+                    if (start > max) start = max;
+                    if (end < start) end = start;
+                    if (end > max) end = max;
+                    
+                    const count = values.filter(v => {
+                        if (i === 0) return v >= start && v <= end;
+                        if (i === 3) return v >= start && v <= end;
+                        return v >= start && v <= end;
+                    }).length;
+                    
+                    const percentage = (count / values.length * 100).toFixed(1);
+                    
+                    ranges.push({
+                        start,
+                        end,
+                        count,
+                        percentage: parseFloat(percentage)
+                    });
+                }
+            }
+            
+            // 调整区间边界，确保连续且不重叠
+            const adjustedRanges = ranges.map((range, index) => {
+                if (index === 0) {
+                    // 第一个区间保持不变
+                    return range;
+                } else {
+                    // 后续区间的起始值 = 前一个区间的结束值
+                    return {
+                        start: ranges[index - 1].end,
+                        end: range.end,
+                        count: range.count,
+                        percentage: range.percentage
+                    };
+                }
+            });
+            
+            // 格式化区间显示文本
+            const formattedRanges = adjustedRanges.map((range, index) => {
+                let rangeText = '';
+                
+                // 格式化数字函数（金额字段使用千分位分隔符）
+                const formatNumber = (num) => {
+                    if (field.format === 'currency') {
+                        return num.toLocaleString();
+                    } else {
+                        return num.toString();
+                    }
+                };
+                
+                if (index === 0) {
+                    // 第一个区间：X以下
+                    rangeText = `${formatNumber(range.end)}${field.unit}以下`;
+                } else if (index === 3) {
+                    // 最后一个区间：X以上
+                    rangeText = `${formatNumber(range.start)}${field.unit}以上`;
+                } else {
+                    // 中间区间：X - Y单位（只在结尾显示单位）
+                    rangeText = `${formatNumber(range.start)} - ${formatNumber(range.end)}${field.unit}`;
+                }
+                
+                return {
+                    rangeText,
+                    count: range.count,
+                    percentage: range.percentage
+                };
+            });
+            
+            let currentRow = 1;
+            
+            // 添加表头
+            worksheet.getCell(`A${currentRow}`).value = '范围';
+            worksheet.getCell(`B${currentRow}`).value = '占比';
+            
+            // 设置表头样式
+            ['A', 'B'].forEach(col => {
+                const cell = worksheet.getCell(`${col}${currentRow}`);
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FF165DFF' }
+                };
+                cell.border = {
+                    top: { style: 'thin', color: { argb: 'FF000000' } },
+                    left: { style: 'thin', color: { argb: 'FF000000' } },
+                    bottom: { style: 'thin', color: { argb: 'FF000000' } },
+                    right: { style: 'thin', color: { argb: 'FF000000' } }
+                };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+            currentRow++;
+            
+            // 添加区间数据
+            formattedRanges.forEach((formattedRange, index) => {
+                worksheet.getCell(`A${currentRow}`).value = formattedRange.rangeText;
+                
+                // 格式化占比数值：如果是整数就不显示小数部分，否则显示一位小数
+                const percentageValue = formattedRange.percentage;
+                if (percentageValue % 1 === 0) {
+                    worksheet.getCell(`B${currentRow}`).value = percentageValue; // 整数
+                    worksheet.getCell(`B${currentRow}`).numFmt = '0'; // 整数格式
+                } else {
+                    worksheet.getCell(`B${currentRow}`).value = percentageValue; // 小数
+                    worksheet.getCell(`B${currentRow}`).numFmt = '0.0'; // 一位小数格式
+                }
+                
+                // 设置数据行样式
+                ['A', 'B'].forEach(col => {
+                    const cell = worksheet.getCell(`${col}${currentRow}`);
+                    cell.border = {
+                        top: { style: 'thin', color: { argb: 'FF000000' } },
+                        left: { style: 'thin', color: { argb: 'FF000000' } },
+                        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+                        right: { style: 'thin', color: { argb: 'FF000000' } }
+                    };
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                });
+                
+                currentRow++;
+            });
+            
+            // 设置列宽
+            worksheet.columns = [
+                { width: 35 }, // A列：范围
+                { width: 15 }  // B列：占比
+            ];
+            
+            // 设置默认行高
+            worksheet.properties.defaultRowHeight = 25;
+        });
+        
+        // 导出Excel文件
+        workbook.xlsx.writeBuffer().then(buffer => {
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, '展会数据区间分析.xlsx');
+            
+            // 隐藏加载指示器
+            document.getElementById('loader').classList.add('hidden');
+        });
+        
+    }, 500);
+}
+// 绑定导出区间分析按钮事件
+document.getElementById('exportAnalysisBtn').addEventListener('click', exportAnalysisToExcel);
+            
+          // 数据区间分析功能 - 优化版本（面积和人员都不取整）
+function generateRangeAnalysis() {
+    const container = document.getElementById('rangeAnalysisContainer');
+    
+    // 如果没有数据，显示提示
+    if (allData.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <div class="w-16 h-16 mb-3 text-gray-300 mx-auto">
+                    <i class="fa fa-bar-chart text-4xl"></i>
+                </div>
+                <p>生成数据后将显示区间分析</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // 要分析的字段
+    const fields = [
+        { key: 'area', label: '面积(㎡)', format: 'number', noRounding: true }, // 面积不取整
+        { key: 'staff', label: '人员', format: 'number', noRounding: true },    // 人员不取整
+        { key: 'rentCost', label: '租赁支出', format: 'currency' },
+        { key: 'setupCost', label: '搭建支出', format: 'currency' },
+        { key: 'logisticsCost', label: '物流支出', format: 'currency' },
+        { key: 'adCost', label: '广告支出', format: 'currency' },
+        { key: 'foodCost', label: '餐饮支出', format: 'currency' },
+        { key: 'travelCost', label: '出行支出', format: 'currency' }
+    ];
+    
+    // 清空容器
+    container.innerHTML = '';
+    
+    // 为每个字段生成区间分析
+    fields.forEach(field => {
+        // 获取字段的所有值
+        const values = allData.map(item => Math.round(item[field.key]));
+        
+        // 计算最小值和最大值
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        
+        let ranges = [];
+        
+        if (field.noRounding) {
+            // 面积和人员字段：直接计算区间，不取整
+            const range = max - min;
+            const interval = Math.ceil(range / 4);
+            
+            for (let i = 0; i < 4; i++) {
+                const start = min + i * interval;
+                let end;
+                
+                if (i === 3) {
+                    end = max; // 最后一个区间包含最大值
+                } else {
+                    end = min + (i + 1) * interval - 1;
+                }
+                
+                const count = values.filter(v => {
+                    if (i === 0) return v >= start && v <= end;
+                    if (i === 3) return v >= start && v <= end;
+                    return v >= start && v <= end;
+                }).length;
+                
+                const percentage = (count / values.length * 100).toFixed(1);
+                
+                ranges.push({
+                    start: i === 0 ? min : start,
+                    end: i === 3 ? max : end,
+                    count,
+                    percentage: parseFloat(percentage)
+                });
+            }
+        } else {
+            // 金额字段：生成整齐的区间边界
+            const range = max - min;
+            
+            // 确定合适的区间宽度（整十、整百、整千）
+            let baseInterval;
+            if (range >= 10000) {
+                baseInterval = 1000; // 万级以上用1000的倍数
+            } else if (range >= 1000) {
+                baseInterval = 100;  // 千级以上用100的倍数
+            } else if (range >= 100) {
+                baseInterval = 50;   // 百级以上用50的倍数
+            } else {
+                baseInterval = 10;   // 其他用10的倍数
+            }
+            
+            // 计算近似的区间宽度，然后调整到baseInterval的倍数
+            let interval = Math.ceil(range / 4 / baseInterval) * baseInterval;
+            
+            // 调整最小值到baseInterval的倍数（向下取整）
+            const adjustedMin = Math.floor(min / baseInterval) * baseInterval;
+            
+            // 生成4个整齐的区间
+            for (let i = 0; i < 4; i++) {
+                let start, end;
+                
+                if (i === 0) {
+                    // 第一个区间从实际最小值开始
+                    start = min;
+                    end = adjustedMin + interval;
+                } else if (i === 3) {
+                    // 最后一个区间到实际最大值结束
+                    start = adjustedMin + i * interval + 1;
+                    end = max;
+                } else {
+                    // 中间区间使用整齐的边界
+                    start = adjustedMin + i * interval + 1;
+                    end = adjustedMin + (i + 1) * interval;
+                }
+                
+                // 确保边界合理
+                if (start > max) start = max;
+                if (end < start) end = start;
+                if (end > max) end = max;
+                
+                const count = values.filter(v => {
+                    if (i === 0) return v >= start && v <= end;
+                    if (i === 3) return v >= start && v <= end;
+                    return v >= start && v <= end;
+                }).length;
+                
+                const percentage = (count / values.length * 100).toFixed(1);
+                
+                ranges.push({
+                    start,
+                    end,
+                    count,
+                    percentage: parseFloat(percentage)
+                });
+            }
+        }
+        
+        // 创建字段分析容器
+        const fieldContainer = document.createElement('div');
+        fieldContainer.className = 'mb-6';
+        
+        // 创建字段标题
+        const fieldTitle = document.createElement('h3');
+        fieldTitle.className = 'text-lg font-medium text-gray-800 mb-3 flex items-center';
+        fieldTitle.innerHTML = `<i class="fa fa-calculator mr-2 text-primary"></i>${field.label}区间分析`;
+        fieldContainer.appendChild(fieldTitle);
+        
+        // 创建统计信息
+        const statsDiv = document.createElement('div');
+        statsDiv.className = 'text-sm text-gray-600 mb-3 bg-gray-50 p-2 rounded';
+        
+        // 格式化数值显示
+        const formatValue = (value) => {
+            if (field.format === 'currency') {
+                return '¥' + value.toLocaleString();
+            } else {
+                let unit = '';
+                if (field.key === 'area') unit = '㎡';
+                else if (field.key === 'staff') unit = '人';
+                return value.toLocaleString() + unit;
+            }
+        };
+        
+        const statsHTML = `
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+                <div class="bg-white p-2 rounded shadow-sm">
+                    <div class="text-xs text-gray-500">最小值</div>
+                    <div class="font-medium">${formatValue(min)}</div>
+                </div>
+                <div class="bg-white p-2 rounded shadow-sm">
+                    <div class="text-xs text-gray-500">最大值</div>
+                    <div class="font-medium">${formatValue(max)}</div>
+                </div>
+                <div class="bg-white p-2 rounded shadow-sm">
+                    <div class="text-xs text-gray-500">数据总数</div>
+                    <div class="font-medium">${values.length}家</div>
+                </div>
+                <div class="bg-white p-2 rounded shadow-sm">
+                    <div class="text-xs text-gray-500">处理方式</div>
+                    <div class="font-medium">${field.noRounding ? '自然区间' : '整齐边界'}</div>
+                </div>
+            </div>
+        `;
+        
+        statsDiv.innerHTML = statsHTML;
+        fieldContainer.appendChild(statsDiv);
+        
+        // 创建区间列表
+        const rangeList = document.createElement('div');
+        rangeList.className = 'space-y-3';
+        
+        // 添加每个区间
+        ranges.forEach((range, index) => {
+            const rangeItem = document.createElement('div');
+            rangeItem.className = 'range-item p-3 border rounded-lg bg-white shadow-sm';
+            
+            // 格式化数值
+            let startFormatted, endFormatted;
+            if (field.format === 'currency') {
+                startFormatted = '¥' + range.start.toLocaleString();
+                endFormatted = '¥' + range.end.toLocaleString();
+            } else {
+                startFormatted = range.start.toLocaleString();
+                endFormatted = range.end.toLocaleString();
+            }
+            
+            // 添加单位
+            if (field.key === 'area') {
+                startFormatted += '㎡';
+                endFormatted += '㎡';
+            } else if (field.key === 'staff') {
+                startFormatted += '人';
+                endFormatted += '人';
+            }
+            
+            // 区间内容
+            rangeItem.innerHTML = `
+                <div class="flex justify-between items-center mb-2">
+                    <div class="font-medium text-gray-800">
+                        区间 ${index + 1}: ${startFormatted} - ${endFormatted}
+                    </div>
+                    <div class="text-primary font-medium bg-primary/10 px-2 py-1 rounded">
+                        ${range.percentage}% (${range.count}家)
+                    </div>
+                </div>
+                <div class="range-bar bg-gray-200">
+                    <div class="range-bar-fill bg-primary" style="width: ${range.percentage}%"></div>
+                </div>
+            `;
+            
+            rangeList.appendChild(rangeItem);
+        });
+        
+        fieldContainer.appendChild(rangeList);
+        container.appendChild(fieldContainer);
+    });
+}
+        });
+    </script>
+    <script>
+// 更新专业性百分比的函数
+function updateProfessionalismPercentages() {
+    const level1 = parseInt(document.getElementById('professionalismLevel1').value);
+    const level2 = parseInt(document.getElementById('professionalismLevel2').value);
+    const level3 = parseInt(document.getElementById('professionalismLevel3').value);
+    const level4 = parseInt(document.getElementById('professionalismLevel4').value);
+    const level5 = parseInt(document.getElementById('professionalismLevel5').value);
+    
+    const total = level1 + level2 + level3 + level4 + level5;
+    
+    document.getElementById('professionalismLevel1Value').textContent = level1 + '%';
+    document.getElementById('professionalismLevel2Value').textContent = level2 + '%';
+    document.getElementById('professionalismLevel3Value').textContent = level3 + '%';
+    document.getElementById('professionalismLevel4Value').textContent = level4 + '%';
+    document.getElementById('professionalismLevel5Value').textContent = level5 + '%';
+    document.getElementById('professionalismTotal').textContent = total + '%';
+    
+    // 如果总和不等于100%，显示警告色
+    document.getElementById('professionalismTotal').className = total === 100 ? 'font-medium' : 'font-medium text-red-500';
+}
+
+// 更新洽谈成功率百分比的函数
+function updateSuccessRatePercentages() {
+    const level1 = parseInt(document.getElementById('successRateLevel1').value);
+    const level2 = parseInt(document.getElementById('successRateLevel2').value);
+    const level3 = parseInt(document.getElementById('successRateLevel3').value);
+    const level4 = parseInt(document.getElementById('successRateLevel4').value);
+    const level5 = parseInt(document.getElementById('successRateLevel5').value);
+    
+    const total = level1 + level2 + level3 + level4 + level5;
+    
+    document.getElementById('successRateLevel1Value').textContent = level1 + '%';
+    document.getElementById('successRateLevel2Value').textContent = level2 + '%';
+    document.getElementById('successRateLevel3Value').textContent = level3 + '%';
+    document.getElementById('successRateLevel4Value').textContent = level4 + '%';
+    document.getElementById('successRateLevel5Value').textContent = level5 + '%';
+    document.getElementById('successRateTotal').textContent = total + '%';
+    
+    // 如果总和不等于100%，显示警告色
+    document.getElementById('successRateTotal').className = total === 100 ? 'font-medium' : 'font-medium text-red-500';
+}
+
+// 更新参展人员数量范围占比的函数
+function updateStaffRangePercentages(senderId) {
+    const range1Input = document.getElementById('staffRange1');
+    const range2Input = document.getElementById('staffRange2');
+    
+    let range1 = parseInt(range1Input.value);
+    let range2 = parseInt(range2Input.value);
+    
+    // 如果是从滑块触发的更新，实现联动调节
+    if (senderId) {
+        if (senderId === 'staffRange1') {
+            // 限制范围1在0-100之间
+            range1 = Math.max(0, Math.min(100, range1));
+            // 自动调整范围2
+            range2 = 100 - range1;
+            range2Input.value = range2;
+        } else if (senderId === 'staffRange2') {
+            // 限制范围2在0-100之间
+            range2 = Math.max(0, Math.min(100, range2));
+            // 自动调整范围1
+            range1 = 100 - range2;
+            range1Input.value = range1;
+        }
+    }
+    
+    // 更新显示值
+    document.getElementById('staffRange1Value').textContent = range1 + '%';
+    document.getElementById('staffRange2Value').textContent = range2 + '%';
+    document.getElementById('staffRangeTotal').textContent = '100%';
+    
+    // 总占比始终为100%，所以不需要警告色
+    document.getElementById('staffRangeTotal').className = 'font-medium';
+}
+
+// 更新知名度提升百分比的函数
+function updateAwarenessPercentages() {
+    const level1 = parseInt(document.getElementById('awarenessLevel1').value);
+    const level2 = parseInt(document.getElementById('awarenessLevel2').value);
+    const level3 = parseInt(document.getElementById('awarenessLevel3').value);
+    const level4 = parseInt(document.getElementById('awarenessLevel4').value);
+    const level5 = parseInt(document.getElementById('awarenessLevel5').value);
+    
+    const total = level1 + level2 + level3 + level4 + level5;
+    
+    document.getElementById('awarenessLevel1Value').textContent = level1 + '%';
+    document.getElementById('awarenessLevel2Value').textContent = level2 + '%';
+    document.getElementById('awarenessLevel3Value').textContent = level3 + '%';
+    document.getElementById('awarenessLevel4Value').textContent = level4 + '%';
+    document.getElementById('awarenessLevel5Value').textContent = level5 + '%';
+    document.getElementById('awarenessTotal').textContent = total + '%';
+    
+    // 如果总和不等于100%，显示警告色
+    document.getElementById('awarenessTotal').className = total === 100 ? 'font-medium' : 'font-medium text-red-500';
+}
+// 更新开拓市场百分比的函数
+function updateNewMarketPercentages() {
+    const yes = parseInt(document.getElementById('newMarketYes').value);
+    const no = parseInt(document.getElementById('newMarketNo').value);
+    
+    const total = yes + no;
+    const yesPercent = Math.round((yes / total) * 100);
+    const noPercent = 100 - yesPercent;
+    
+    // 更新滑块值
+    document.getElementById('newMarketYes').value = yesPercent;
+    document.getElementById('newMarketNo').value = noPercent;
+    
+    // 更新显示值
+    document.getElementById('newMarketYesValue').textContent = yesPercent + '%';
+    document.getElementById('newMarketNoValue').textContent = noPercent + '%';
+    document.getElementById('newMarketTotal').textContent = '100%';
+}
+
+// 更新结识客户百分比的函数
+function updateNewClientsPercentages() {
+    const yes = parseInt(document.getElementById('newClientsYes').value);
+    const no = parseInt(document.getElementById('newClientsNo').value);
+    
+    const total = yes + no;
+    const yesPercent = Math.round((yes / total) * 100);
+    const noPercent = 100 - yesPercent;
+    
+    // 更新滑块值
+    document.getElementById('newClientsYes').value = yesPercent;
+    document.getElementById('newClientsNo').value = noPercent;
+    
+    // 更新显示值
+    document.getElementById('newClientsYesValue').textContent = yesPercent + '%';
+    document.getElementById('newClientsNoValue').textContent = noPercent + '%';
+    document.getElementById('newClientsTotal').textContent = '100%';
+}
+
+// 更新面积占比的函数
+function updateAreaRatios() {
+    const ratio1 = parseInt(document.getElementById('areaRatio1').value);
+    const ratio2 = parseInt(document.getElementById('areaRatio2').value);
+    const ratio3 = parseInt(document.getElementById('areaRatio3').value);
+    
+    const total = ratio1 + ratio2 + ratio3;
+    
+    // 如果总和不等于100%，调整最后一个滑块的值
+    if (total !== 100) {
+        const diff = 100 - total;
+        const adjustedRatio3 = Math.max(0, Math.min(100, ratio3 + diff));
+        
+        // 更新滑块值
+        document.getElementById('areaRatio3').value = adjustedRatio3;
+        
+        // 更新显示值
+        document.getElementById('areaRatio3Value').textContent = adjustedRatio3 + '%';
+    }
+    
+    // 更新显示值
+    document.getElementById('areaRatio1Value').textContent = ratio1 + '%';
+    document.getElementById('areaRatio2Value').textContent = ratio2 + '%';
+    document.getElementById('areaRatioTotal').textContent = '100%';
+    
+    // 更新面积区间标签
+    updateAreaRangeLabels();
+}
+
+// 初始化页面时调用一次函数以确保显示正确的值
+window.addEventListener('load', function() {
+    updateProfessionalismPercentages();
+    updateSuccessRatePercentages();
+    updateAwarenessPercentages();
+    updateNewMarketPercentages();
+    updateNewClientsPercentages();
+    updateAreaRatios();
+});
+</script>
+</body>
+</html>
