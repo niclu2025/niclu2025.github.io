@@ -1995,32 +1995,52 @@ for (let i = 0; i < exhibitorCount; i++) {
                     // const professionalism = Math.random() < professionalismPercentage ? professionalismLevels[0] : professionalismLevels[Math.floor(Math.random() * 3) + 1];
                     // const successRate = Math.random() < successRatePercentage ? successLevels[0] : successLevels[Math.floor(Math.random() * 3) + 1];
                     // const awareness = Math.random() < awarenessPercentage ? awarenessLevels[0] : awarenessLevels[Math.floor(Math.random() * 3) + 1];
+// 前4行数据的预设值（按照参考图顺序）
+const firstFourRowsPreset = [
+    { professionalism: '非常高', successRate: '非常高', awareness: '非常显著' },
+    { professionalism: '较高', successRate: '较高', awareness: '较为显著' },
+    { professionalism: '一般', successRate: '一般', awareness: '一般' },
+    { professionalism: '较低', successRate: '较低', awareness: '不太显著' }
+];
+
 // 基于各级别百分比生成专业性数据
 let professionalism;
-const rand1 = Math.random();
-if (rand1 < professionalismLevel1) professionalism = professionalismLevels[0];
-else if (rand1 < professionalismLevel1 + professionalismLevel2) professionalism = professionalismLevels[1];
-else if (rand1 < professionalismLevel1 + professionalismLevel2 + professionalismLevel3) professionalism = professionalismLevels[2];
-else if (rand1 < professionalismLevel1 + professionalismLevel2 + professionalismLevel3 + professionalismLevel4) professionalism = professionalismLevels[3];
-else professionalism = professionalismLevels[4];
+if (i < 4 && firstFourRowsPreset[i]) {
+    professionalism = firstFourRowsPreset[i].professionalism;
+} else {
+    const rand1 = Math.random();
+    if (rand1 < professionalismLevel1) professionalism = professionalismLevels[0];
+    else if (rand1 < professionalismLevel1 + professionalismLevel2) professionalism = professionalismLevels[1];
+    else if (rand1 < professionalismLevel1 + professionalismLevel2 + professionalismLevel3) professionalism = professionalismLevels[2];
+    else if (rand1 < professionalismLevel1 + professionalismLevel2 + professionalismLevel3 + professionalismLevel4) professionalism = professionalismLevels[3];
+    else professionalism = professionalismLevels[4];
+}
 
 // 基于各级别百分比生成洽谈成功率数据
 let successRate;
-const rand2 = Math.random();
-if (rand2 < successRateLevel1) successRate = successLevels[0];
-else if (rand2 < successRateLevel1 + successRateLevel2) successRate = successLevels[1];
-else if (rand2 < successRateLevel1 + successRateLevel2 + successRateLevel3) successRate = successLevels[2];
-else if (rand2 < successRateLevel1 + successRateLevel2 + successRateLevel3 + successRateLevel4) successRate = successLevels[3];
-else successRate = successLevels[4];
+if (i < 4 && firstFourRowsPreset[i]) {
+    successRate = firstFourRowsPreset[i].successRate;
+} else {
+    const rand2 = Math.random();
+    if (rand2 < successRateLevel1) successRate = successLevels[0];
+    else if (rand2 < successRateLevel1 + successRateLevel2) successRate = successLevels[1];
+    else if (rand2 < successRateLevel1 + successRateLevel2 + successRateLevel3) successRate = successLevels[2];
+    else if (rand2 < successRateLevel1 + successRateLevel2 + successRateLevel3 + successRateLevel4) successRate = successLevels[3];
+    else successRate = successLevels[4];
+}
 
 // 基于各级别百分比生成知名度提升数据
 let awareness;
-const rand3 = Math.random();
-if (rand3 < awarenessLevel1) awareness = awarenessLevels[0];
-else if (rand3 < awarenessLevel1 + awarenessLevel2) awareness = awarenessLevels[1];
-else if (rand3 < awarenessLevel1 + awarenessLevel2 + awarenessLevel3) awareness = awarenessLevels[2];
-else if (rand3 < awarenessLevel1 + awarenessLevel2 + awarenessLevel3 + awarenessLevel4) awareness = awarenessLevels[3];
-else awareness = awarenessLevels[4];
+if (i < 4 && firstFourRowsPreset[i]) {
+    awareness = firstFourRowsPreset[i].awareness;
+} else {
+    const rand3 = Math.random();
+    if (rand3 < awarenessLevel1) awareness = awarenessLevels[0];
+    else if (rand3 < awarenessLevel1 + awarenessLevel2) awareness = awarenessLevels[1];
+    else if (rand3 < awarenessLevel1 + awarenessLevel2 + awarenessLevel3) awareness = awarenessLevels[2];
+    else if (rand3 < awarenessLevel1 + awarenessLevel2 + awarenessLevel3 + awarenessLevel4) awareness = awarenessLevels[3];
+    else awareness = awarenessLevels[4];
+}
                     const newMarket = Math.random() < newMarketPercentage ? yesNoOptions[0] : yesNoOptions[1];
                     const newClients = Math.random() < newClientsPercentage ? yesNoOptions[0] : yesNoOptions[1];
 
@@ -2308,25 +2328,25 @@ function exportToExcel() {
 
     // 设置列宽
     worksheet.columns = [
-        { header: '类别', key: '类别', width: 10 },
-        { header: '面积(㎡)', key: '面积(㎡)', width: 10 },
-        { header: '人员', key: '人员', width: 8 },
-        { header: '租赁支出', key: '租赁支出', width: 12 },
-        { header: '搭建支出', key: '搭建支出', width: 12 },
-        { header: '物流支出', key: '物流支出', width: 12 },
-        { header: '广告支出', key: '广告支出', width: 12 },
-        { header: '餐饮支出', key: '餐饮支出', width: 12 },
-        { header: '出行支出', key: '出行支出', width: 12 },
-        { header: '销售额', key: '销售额', width: 12 },
-        { header: '观众数', key: '观众数', width: 10 },
-        { header: '专业性', key: '专业性', width: 12 },
-        { header: '洽谈数', key: '洽谈数', width: 10 },
-        { header: '洽谈成功率', key: '洽谈成功率', width: 12 },
-        { header: '订单数', key: '订单数', width: 10 },
-        { header: '预计销售额', key: '预计销售额', width: 12 },
-        { header: '知名度提升', key: '知名度提升', width: 12 },
-        { header: '开拓市场', key: '开拓市场', width: 12 },
-        { header: '结识客户', key: '结识客户', width: 12 }
+        { header: '4、参展产品/服务类别:', key: 'category', width: 25 },
+        { header: '5、您的展位面积：（平方米）', key: 'area', width: 25 },
+        { header: '6、参展人员数量：（人）', key: 'staff', width: 25 },
+        { header: '7、展位租赁支出：（元）', key: 'rentCost', width: 25 },
+        { header: '8、展位搭建及设计支出：（元）', key: 'setupCost', width: 30 },
+        { header: '9、运输及物流支出：（元）', key: 'logisticsCost', width: 25 },
+        { header: '10、广告宣传支出：（元）', key: 'adCost', width: 25 },
+        { header: '11、参展人员餐饮支出：（元）', key: 'foodCost', width: 30 },
+        { header: '12、参展人员出行支出（包含往返天津支出、市内通勤支出、日常出行支出）：（元）', key: 'travelCost', width: 50 },
+        { header: '13、参展期间，每日的展品销售额：（元）注：如无展品，请写"0"', key: 'dailySales', width: 40 },
+        { header: '14、(1)参展效果评估请根据您的参展体验，回答以下问题展会期间，您展位共接待了___名观众。', key: 'visitors', width: 60 },
+        { header: '15、您认为这些观众的专业性如何？（请在以下选项中选择一项）', key: 'professionalism', width: 50 },
+        { header: '16、(1)展会期间，您共与___家潜在客户/合作伙伴进行了业务洽谈。', key: 'negotiations', width: 60 },
+        { header: '17、您认为这些洽谈的成功率如何？（请在以下选项中选择一项）', key: 'successRate', width: 50 },
+        { header: '18、(1)展会期间，您直接获得的订单数量：___', key: 'orders', width: 40 },
+        { header: '18、(2)份预计由展会带来的后续销售额：___元', key: 'expectedSales', width: 40 },
+        { header: '19、您认为本次展会对您品牌知名度的提升效果如何？（请在以下选项中选择一项）', key: 'awareness', width: 50 },
+        { header: '20、溢出效应评估请根据您的参展经历，回答以下问题：通过本次展会，您是否开拓了新的市场区域？（请在以下选项中选择一项）', key: 'newMarket', width: 70 },
+        { header: '21、通过本次展会，您是否结识了新的客户或合作伙伴？（请在以下选项中选择一项）', key: 'newClients', width: 60 }
     ];
 
     // 导出Excel文件
