@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>展会数据整合平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #F0F2F5;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部导航条 */
+        .navbar {
+            background: linear-gradient(135deg, #0070C0, #005A9E);
+            box-shadow: 0 2px 12px rgba(0, 112, 192, 0.3);
+            flex-shrink: 0;
+            z-index: 100;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            height: 60px;
+        }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 700;
+            margin-right: 32px;
+            white-space: nowrap;
+        }
+
+        .navbar-brand i {
+            font-size: 24px;
+        }
+
+        .tab-btn {
+            background: transparent;
+            color: rgba(255, 255, 255, 0.75);
+            border: none;
+            padding: 8px 20px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.25s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .tab-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+
+        .tab-btn.active {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 3px;
+            background: #fff;
+            border-radius: 2px;
+        }
+
+        .tab-btn i {
+            font-size: 16px;
+        }
+
+        .tab-content-wrapper {
+            flex: 1;
+            overflow: hidden;
+            padding: 0;
+            position: relative;
+        }
+
+        .tab-panel {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        .tab-panel iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* ===== db统计页面样式 ===== */
+        .stats-container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: #F5F7FA;
+            padding: 12px 16px;
+            height: 100%;
+            overflow-y: auto;
+            color: #333;
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+        }
+        .stats-container .page-title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            padding: 10px 16px;
+            background-color: #0070C0;
+            color: #FFFFFF;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            position: relative;
+        }
+        .stats-container .page-title .btn-export {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: #fff;
+            padding: 5px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .stats-container .page-title .btn-export:hover {
+            background: rgba(255,255,255,0.35);
+            border-color: rgba(255,255,255,0.6);
+        }
+        .stats-container .module {
+            background: #fff;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .stats-container .module-header {
+            background: #0070C0;
+            color: #fff;
+            padding: 7px 14px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .stats-container .module-content {
+            padding: 6px 8px;
+            overflow-x: auto;
+        }
+        .stats-container table { width:100%; border-collapse:collapse; }
+        .stats-container table thead tr { background:#D9E1F2; }
+        .stats-container table th {
+            padding:5px 5px; text-align:center; font-weight:bold;
+            color:#003366; border-bottom:2px solid #0070C0; white-space:nowrap;
+        }
+        .stats-container table td {
+            padding:4px 5px; text-align:center; border-bottom:1px solid #D9D9D9;
+        }
+        .stats-container table tbody tr:nth-child(even) { background:#EBF1F8; }
+        .stats-container table tbody tr:hover { background:#E5F0FF; }
+        .stats-container .text-left { text-align:left; }
+        .stats-container input[type="number"] {
+            width:100%; padding:3px 5px; border:1px solid #D9D9D9;
+            border-radius:3px; text-align:right; font-size:13px;
+            transition:border-color 0.3s;
+        }
+        .stats-container input:focus {
+            outline:none; border-color:#0070C0;
+            box-shadow:0 0 0 2px rgba(0,112,192,0.2);
+        }
+        .stats-container .summary-row { background:#D9D9D9 !important; font-weight:bold; }
+        .stats-container .summary-row td { color:#003366; }
+        .stats-container .result-cell {
+            background:#F8F9FA; color:#0070C0; font-weight:bold;
+        }
+        .stats-container .coefficient-box {
+            display:flex; justify-content:space-around; padding:10px;
+            flex-wrap:wrap; gap:10px;
+        }
+        .stats-container .coefficient-item {
+            text-align:center; padding:10px 16px;
+            background:#EBF1F8; border-radius:6px; min-width:150px;
+        }
+        .stats-container .coefficient-label { font-size:13px; color:#666; margin-bottom:5px; }
+        .stats-container .coefficient-value { font-size:22px; font-weight:bold; color:#0070C0; }
+
+        /* 状态栏 */
+        .status-bar {
+            background: #fff;
+            border-top: 1px solid #E5E7EB;
+            padding: 8px 24px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #6B7280;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #9CA3AF;
+            display: inline-block;
+        }
+
+        .status-dot.active {
+            background: #10B981;
+        }
+
+        .status-dot.error {
+            background: #EF4444;
+        }
+
+        .status-summary {
+            color: #374151;
+            max-width: 600px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 640px) {
+            .navbar {
+                padding: 0 12px;
+                height: 52px;
+            }
+            .navbar-brand {
+                font-size: 15px;
+                margin-right: 12px;
+            }
+            .navbar-brand span {
+                display: none;
+            }
+            .tab-btn {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+            .tab-btn i {
+                display: none;
+            }
+            .status-bar {
+                padding: 6px 12px;
+                font-size: 12px;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .status-summary {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航条 -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <i class="fas fa-chart-pie"></i>
+            <span>展会数据整合平台</span>
+        </div>
+        <button class="tab-btn active" data-tab="exhibitor" onclick="switchTab('exhibitor')">
+            <i class="fas fa-building"></i> 参展商数据
+        </button>
+        <button class="tab-btn" data-tab="audience" onclick="switchTab('audience')">
+            <i class="fas fa-users"></i> 观众数据
+        </button>
+        <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">
+            <i class="fas fa-chart-bar"></i> 数据统计
+        </button>
+    </nav>
+
+    <!-- 内容区域 -->
+    <div class="tab-content-wrapper">
+        <div class="tab-panel active" id="panel-exhibitor">
+            <iframe src="参展商.html" name="exhibitorFrame"></iframe>
+        </div>
+        <div class="tab-panel" id="panel-audience">
+            <iframe src="观众.html" name="audienceFrame"></iframe>
+        </div>
+        <div class="tab-panel" id="panel-stats">
+            <div class="stats-container">
+                <div class="page-title">
+                    展会数据统计计算系统
+                    <button class="btn-export" onclick="exportStatsExcel()">
+                        <i class="fas fa-file-excel mr-1"></i> 导出 Excel
+                    </button>
+                </div>
+
+                <!-- 一、展会基本信息与系数 -->
+                <div class="module">
+                    <div class="module-header">一、展会基本信息与核心系数</div>
+                    <div class="module-content">
+                        <div class="coefficient-box">
+                            <div class="coefficient-item">
+                                <div class="coefficient-label">展会名称</div>
+                                <input type="text" id="exhibitionName" value="XX展会" style="text-align:center;font-size:18px;font-weight:bold;width:100%">
+                            </div>
+                            <div class="coefficient-item">
+                                <div class="coefficient-label">直接收入总计</div>
+                                <div class="coefficient-value" id="directTotal">0</div>
+                            </div>
+                            <div class="coefficient-item">
+                                <div class="coefficient-label">间接收入总计</div>
+                                <div class="coefficient-value" id="indirectTotal">0</div>
+                            </div>
+                            <div class="coefficient-item">
+                                <div class="coefficient-label">拉动系数</div>
+                                <div class="coefficient-value" id="pullCoefficient">0.00</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 二、直接收入 -->
+                <div class="module">
+                    <div class="module-header">二、会展直接收入明细</div>
+                    <div class="module-content">
+                        <table>
+                            <thead><tr><th class="text-left">收入项目</th><th>直接主办</th><th>直接展商</th><th>直接观众</th><th>直接合计</th></tr></thead>
+                            <tbody>
+                                <tr><td class="text-left">展位租赁费</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-1">0</td></tr>
+                                <tr><td class="text-left">门票费</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-2">0</td></tr>
+                                <tr><td class="text-left">展品销售额</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-3">0</td></tr>
+                                <tr><td class="text-left">赞助收入费</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-4">0</td></tr>
+                                <tr><td class="text-left">会议注册费</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-5">0</td></tr>
+                                <tr><td class="text-left">培训服务费</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-6">0</td></tr>
+                                <tr><td class="text-left">广告收入</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-7">0</td></tr>
+                                <tr><td class="text-left">展位搭建服务</td><td><input type="number" class="direct-input" data-field="host" value="0"></td><td><input type="number" class="direct-input" data-field="exhibitor" value="0"></td><td><input type="number" class="direct-input" data-field="audience" value="0"></td><td class="result-cell" id="direct-8">0</td></tr>
+                                <tr class="summary-row"><td class="text-left">直接总计</td><td id="direct-host-total">0</td><td id="direct-exhibitor-total">0</td><td id="direct-audience-total">0</td><td id="direct-grand-total">0</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 三、间接收入 -->
+                <div class="module">
+                    <div class="module-header">三、会展间接收入明细</div>
+                    <div class="module-content">
+                        <table>
+                            <thead><tr><th class="text-left">收入项目</th><th>间接主办</th><th>间接展商</th><th>间接观众</th><th>间接合计</th></tr></thead>
+                            <tbody id="indirectTableBody">
+                                <tr><td class="text-left">餐饮</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-1">0</td></tr>
+                                <tr><td class="text-left">住宿</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-2">0</td></tr>
+                                <tr><td class="text-left">交通</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-3">0</td></tr>
+                                <tr><td class="text-left">物流</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-4">0</td></tr>
+                                <tr><td class="text-left">旅游</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-5">0</td></tr>
+                                <tr><td class="text-left">场馆搭建支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-6">0</td></tr>
+                                <tr><td class="text-left">广告支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-7">0</td></tr>
+                                <tr><td class="text-left">综合服务费</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-8">0</td></tr>
+                                <tr><td class="text-left">展品销售额</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-9">0</td></tr>
+                                <tr><td class="text-left">安保服务费</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-10">0</td></tr>
+                                <tr><td class="text-left">劳务支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-11">0</td></tr>
+                                <tr><td class="text-left">其他服务费支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-12">0</td></tr>
+                                <tr><td class="text-left">电检</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-13">0</td></tr>
+                                <tr><td class="text-left">礼品支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-14">0</td></tr>
+                                <tr><td class="text-left">印刷支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-15">0</td></tr>
+                                <tr><td class="text-left">展馆租赁支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-16">0</td></tr>
+                                <tr><td class="text-left">租赁设备支出</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-17">0</td></tr>
+                                <tr><td class="text-left">公关服务</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-18">0</td></tr>
+                                <tr><td class="text-left">法律、咨询服务</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-19">0</td></tr>
+                                <tr><td class="text-left">其他服务收入</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-20">0</td></tr>
+                                <tr><td class="text-left">项目投资</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-21">0</td></tr>
+                                <tr><td class="text-left">品牌收益</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-22">0</td></tr>
+                                <tr><td class="text-left">城市其他间接收益</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-23">0</td></tr>
+                                <tr><td class="text-left">娱乐消费</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-24">0</td></tr>
+                                <tr><td class="text-left">购物消费</td><td><input type="number" class="indirect-input" data-field="host" value="0"></td><td><input type="number" class="indirect-input" data-field="exhibitor" value="0"></td><td><input type="number" class="indirect-input" data-field="audience" value="0"></td><td class="result-cell" id="indirect-25">0</td></tr>
+                                <tr class="summary-row"><td class="text-left">间接总计</td><td id="indirect-host-total">0</td><td id="indirect-exhibitor-total">0</td><td id="indirect-audience-total">0</td><td id="indirect-grand-total">0</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 四、采样数据 -->
+                <div class="module">
+                    <div class="module-header">四、观众与展商采样数据</div>
+                    <div class="module-content">
+                        <div style="display:flex;gap:30px;margin-bottom:8px;font-size:13px;color:#666;">
+                            <label>观众采样比例：<input type="number" id="audienceRate" value="0.05" step="0.01" style="width:70px;padding:2px 4px;" oninput="document.getElementById('audienceSample').value=Math.round((document.getElementById('audienceActual').value||0)*parseFloat(this.value||0.05));calculateAll()"> %</label>
+                            <label>展商采样比例：<input type="number" id="exhibitorRate" value="0.1" step="0.01" style="width:70px;padding:2px 4px;" oninput="document.getElementById('exhibitorSample').value=Math.round((document.getElementById('exhibitorActual').value||0)*parseFloat(this.value||0.1));calculateAll()"> %</label>
+                        </div>
+                        <table>
+                            <thead><tr><th>采样指标</th><th>观众采样个数</th><th>观众实际人数</th><th>展商采样个数</th><th>展商实际个数</th><th>观众倍数</th><th>展商倍数</th></tr></thead>
+                            <tbody>
+                                <tr><td>数值</td><td><input type="number" id="audienceSample" value="0"></td><td><input type="number" id="audienceActual" value="0" oninput="autoCalcAudience()"></td><td><input type="number" id="exhibitorSample" value="0"></td><td><input type="number" id="exhibitorActual" value="0" oninput="autoCalcExhibitor()"></td><td class="result-cell" id="audienceMultiple">0.00</td><td class="result-cell" id="exhibitorMultiple">0.00</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <div class="status-bar">
+        <div class="status-indicator">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">等待数据...</span>
+        </div>
+        <div class="status-summary" id="statusSummary">
+            <i class="fas fa-sync-alt mr-1"></i> 切换 Tab 查看对应数据
+        </div>
+    </div>
+
+    <script>
+        // 存储接收到的数据
+        let latestExhibitorData = null;
+        let latestAudienceData = null;
+
+        // Tab 切换
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tab);
+            });
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.toggle('active', panel.id === 'panel-' + tab);
+            });
+            // 切换到数据统计时，自动填入联动数据
+            if (tab === 'stats') {
+                fillDbStatsData();
+            }
+        }
+
+        // ===== 直接操作 DOM 填入数据（同页面，无跨域问题） =====
+        function setDbInputValue(indirectId, field, value) {
+            const cell = document.getElementById(indirectId);
+            if (!cell) return false;
+            const tr = cell.closest('tr');
+            if (!tr) return false;
+            const input = tr.querySelector('input[data-field="' + field + '"]');
+            if (!input) return false;
+            input.value = Math.round(value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            return true;
+        }
+
+        function fillDbStatsData() {
+            let hasData = false;
+
+            // 填入参展商乘倍数数据
+            if (latestExhibitorData) {
+                const d = latestExhibitorData;
+                const mappings = [
+                    { id: 'indirect-6', field: 'exhibitor', val: d.setupCost },
+                    { id: 'indirect-4', field: 'exhibitor', val: d.logisticsCost },
+                    { id: 'indirect-7', field: 'exhibitor', val: d.adCost },
+                    { id: 'indirect-1', field: 'exhibitor', val: d.foodCost },
+                    { id: 'indirect-3', field: 'exhibitor', val: d.travelCost }
+                ];
+                mappings.forEach(m => {
+                    if (m.val !== undefined && m.val !== null && !isNaN(m.val)) {
+                        setDbInputValue(m.id, m.field, m.val);
+                    }
+                });
+                hasData = true;
+            }
+
+            // 填入观众乘倍数数据
+            if (latestAudienceData) {
+                const d = latestAudienceData;
+                const mappings = [
+                    { id: 'indirect-1', field: 'audience', val: d.foodConsumption },
+                    { id: 'indirect-2', field: 'audience', val: d.accommodationCost },
+                    { id: 'indirect-3', field: 'audience', val: d.transportationCost },
+                    { id: 'indirect-5', field: 'audience', val: d.travelCost },
+                    { id: 'indirect-25', field: 'audience', val: d.shoppingCost },
+                    { id: 'indirect-24', field: 'audience', val: d.entertainmentCost }
+                ];
+                mappings.forEach(m => {
+                    if (m.val !== undefined && m.val !== null && !isNaN(m.val)) {
+                        setDbInputValue(m.id, m.field, m.val);
+                    }
+                });
+                hasData = true;
+            }
+
+            if (hasData) {
+                updateStatus('success', '数据已自动填入统计页面');
+                // 触发全量重算
+                if (typeof calculateAll === 'function') calculateAll();
+            }
+        }
+
+        // ===== 自动计算采样个数 =====
+        function autoCalcAudience() {
+            const rate = parseFloat(document.getElementById('audienceRate').value) || 0.05;
+            const actual = parseFloat(document.getElementById('audienceActual').value) || 0;
+            document.getElementById('audienceSample').value = Math.round(actual * rate);
+            calculateAll();
+        }
+        function autoCalcExhibitor() {
+            const rate = parseFloat(document.getElementById('exhibitorRate').value) || 0.1;
+            const actual = parseFloat(document.getElementById('exhibitorActual').value) || 0;
+            document.getElementById('exhibitorSample').value = Math.round(actual * rate);
+            calculateAll();
+        }
+
+        // ===== db 统计计算逻辑 =====
+        function calculateAll() {
+            // 1. 直接收入
+            const directRows = 8;
+            let dHost = 0, dExh = 0, dAud = 0, dGrand = 0;
+            for (let i = 1; i <= directRows; i++) {
+                const tr = document.getElementById('direct-' + i).closest('tr');
+                const host = parseFloat(tr.querySelector('input[data-field="host"]').value) || 0;
+                const exh = parseFloat(tr.querySelector('input[data-field="exhibitor"]').value) || 0;
+                const aud = parseFloat(tr.querySelector('input[data-field="audience"]').value) || 0;
+                const sum = host + exh + aud;
+                document.getElementById('direct-' + i).textContent = sum.toLocaleString();
+                dHost += host; dExh += exh; dAud += aud; dGrand += sum;
+            }
+            document.getElementById('direct-host-total').textContent = dHost.toLocaleString();
+            document.getElementById('direct-exhibitor-total').textContent = dExh.toLocaleString();
+            document.getElementById('direct-audience-total').textContent = dAud.toLocaleString();
+            document.getElementById('direct-grand-total').textContent = dGrand.toLocaleString();
+            document.getElementById('directTotal').textContent = dGrand.toLocaleString();
+
+            // 2. 间接收入
+            const indirectRows = 25;
+            let iHost = 0, iExh = 0, iAud = 0, iGrand = 0;
+            for (let i = 1; i <= indirectRows; i++) {
+                const tr = document.getElementById('indirect-' + i).closest('tr');
+                const host = parseFloat(tr.querySelector('input[data-field="host"]').value) || 0;
+                const exh = parseFloat(tr.querySelector('input[data-field="exhibitor"]').value) || 0;
+                const aud = parseFloat(tr.querySelector('input[data-field="audience"]').value) || 0;
+                const sum = host + exh + aud;
+                document.getElementById('indirect-' + i).textContent = sum.toLocaleString();
+                iHost += host; iExh += exh; iAud += aud; iGrand += sum;
+            }
+            document.getElementById('indirect-host-total').textContent = iHost.toLocaleString();
+            document.getElementById('indirect-exhibitor-total').textContent = iExh.toLocaleString();
+            document.getElementById('indirect-audience-total').textContent = iAud.toLocaleString();
+            document.getElementById('indirect-grand-total').textContent = iGrand.toLocaleString();
+            document.getElementById('indirectTotal').textContent = iGrand.toLocaleString();
+
+            // 3. 拉动系数
+            document.getElementById('pullCoefficient').textContent = '1:' + (dGrand === 0 ? '0.00' : (iGrand / dGrand).toFixed(2));
+
+            // 4. 采样倍数
+            const aS = parseFloat(document.getElementById('audienceSample').value) || 0;
+            const aA = parseFloat(document.getElementById('audienceActual').value) || 0;
+            const eS = parseFloat(document.getElementById('exhibitorSample').value) || 0;
+            const eA = parseFloat(document.getElementById('exhibitorActual').value) || 0;
+            document.getElementById('audienceMultiple').textContent = aS === 0 ? '0.00' : (aA / aS).toFixed(2);
+            document.getElementById('exhibitorMultiple').textContent = eS === 0 ? '0.00' : (eA / eS).toFixed(2);
+        }
+
+        // ===== 更新状态栏 =====
+        function updateStatus(type, summary) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const summaryEl = document.getElementById('statusSummary');
+            dot.className = 'status-dot' + (type === 'success' ? ' active' : '') + (type === 'error' ? ' error' : '');
+            text.textContent = type === 'success' ? '数据联动成功' : type === 'error' ? '数据联动失败' : '等待数据...';
+            if (summary) summaryEl.innerHTML = '<i class="fas fa-check-circle text-green-500 mr-1"></i> ' + summary;
+        }
+
+        function formatNum(n) {
+            if (n === undefined || n === null) return '0';
+            return Number(n).toLocaleString();
+        }
+
+        // ===== 监听来自子 iframe 的 postMessage =====
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data || !data.type) return;
+
+            let summary = '';
+
+            if (data.type === 'exhibitorData') {
+                latestExhibitorData = data.data;
+                const d = data.data;
+                summary = '参展商数据已接收 — 场馆搭建:' + formatNum(d.setupCost) +
+                    ' | 物流:' + formatNum(d.logisticsCost) +
+                    ' | 广告:' + formatNum(d.adCost) +
+                    ' | 餐饮:' + formatNum(d.foodCost) +
+                    ' | 交通:' + formatNum(d.travelCost);
+                updateStatus('success', summary);
+                const active = document.querySelector('.tab-panel.active');
+                if (active && active.id === 'panel-stats') fillDbStatsData();
+            } else if (data.type === 'audienceData') {
+                latestAudienceData = data.data;
+                const d = data.data;
+                summary = '观众数据已接收 — 餐饮:' + formatNum(d.foodConsumption) +
+                    ' | 住宿:' + formatNum(d.accommodationCost) +
+                    ' | 交通:' + formatNum(d.transportationCost) +
+                    ' | 旅游:' + formatNum(d.travelCost) +
+                    ' | 购物:' + formatNum(d.shoppingCost) +
+                    ' | 娱乐:' + formatNum(d.entertainmentCost);
+                updateStatus('success', summary);
+                const active = document.querySelector('.tab-panel.active');
+                if (active && active.id === 'panel-stats') fillDbStatsData();
+            }
+        });
+
+        // ===== 绑定输入事件 =====
+        document.addEventListener('DOMContentLoaded', function() {
+            // 绑定 stat-container 内所有输入的 input/change 事件
+            const container = document.querySelector('.stats-container');
+            if (container) {
+                container.querySelectorAll('input').forEach(inp => {
+                    inp.addEventListener('input', calculateAll);
+                    inp.addEventListener('change', calculateAll);
+                });
+            }
+            calculateAll();
+        });
+
+        // ===== 导出 Excel（使用 ExcelJS） =====
+        function exportStatsExcel() {
+            // 读取系数
+            const exhibitionName = document.getElementById('exhibitionName').value || '展会';
+            const directTotal = document.getElementById('directTotal').textContent.replace(/,/g, '');
+            const indirectTotal = document.getElementById('indirectTotal').textContent.replace(/,/g, '');
+            const pullCoefficient = document.getElementById('pullCoefficient').textContent;
+            const aSample = document.getElementById('audienceSample').value || 0;
+            const aActual = document.getElementById('audienceActual').value || 0;
+            const eSample = document.getElementById('exhibitorSample').value || 0;
+            const eActual = document.getElementById('exhibitorActual').value || 0;
+            const aMultiple = document.getElementById('audienceMultiple').textContent;
+            const eMultiple = document.getElementById('exhibitorMultiple').textContent;
+
+            // 边框样式
+            const thinBorder = {
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: { style: 'thin' }
+            };
+
+            // 写入行数据到 worksheet（带边框）
+            function addRowWithBorder(ws, cells, isBold) {
+                // 将数字字符串转为实际数字（首列除外）
+                const parsed = cells.map((v, i) => {
+                    if (i === 0) return v; // 项目名称保持文本
+                    if (v === '' || v === null || v === undefined) return 0;
+                    if (typeof v === 'number') return v;
+                    // 去除千分位逗号后转数字
+                    const num = parseFloat(String(v).replace(/,/g, ''));
+                    return isNaN(num) ? v : num;
+                });
+                const row = ws.addRow(parsed);
+                row.eachCell((cell) => {
+                    cell.border = thinBorder;
+                    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                    if (isBold) {
+                        cell.font = { bold: true, size: 11 };
+                    }
+                    // 数字列设 numFmt 确保 Excel 识别为数字
+                    if (typeof cell.value === 'number') {
+                        cell.numFmt = '#,##0';
+                    }
+                });
+                return row;
+            }
+
+            // 创建 workbook
+            const wb = new ExcelJS.Workbook();
+            wb.creator = '展会数据整合平台';
+            wb.created = new Date();
+
+            // ========== 合并为一张工作表 ==========
+            const ws = wb.addWorksheet('数据统计', { pageSetup: { orientation: 'landscape' } });
+            ws.getColumn(1).width = 22;
+            ws.getColumn(2).width = 16;
+            ws.getColumn(3).width = 16;
+            ws.getColumn(4).width = 16;
+            ws.getColumn(5).width = 16;
+
+            // ----- 标题行 -----
+            const titleRow = ws.addRow([exhibitionName + ' — 数据统计']);
+            titleRow.font = { bold: true, size: 15 };
+            ws.mergeCells('A1:E1');
+            titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+            titleRow.height = 32;
+
+            ws.addRow([]); // 空行
+
+            // ======= 一、直接收入 =======
+            let sectionRow = ws.addRow(['一、直接收入明细']);
+            sectionRow.font = { bold: true, size: 13 };
+            ws.mergeCells('A' + sectionRow.number + ':E' + sectionRow.number);
+            sectionRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+
+            // 表头
+            const directHeaders = ['收入项目', '直接主办', '直接展商', '直接观众', '直接合计'];
+            const hRow = ws.addRow(directHeaders);
+            hRow.eachCell((cell) => {
+                cell.border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } };
+                cell.font = { bold: true, size: 11 };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            });
+
+            // 数据行（带合计公式）
+            const directNames = ['展位租赁费', '门票费', '展品销售额', '赞助收入费', '会议注册费', '培训服务费', '广告收入', '展位搭建服务'];
+            let directRowStart = 0;
+            for (let i = 0; i < directNames.length; i++) {
+                const tr = document.getElementById('direct-' + (i + 1)).closest('tr');
+                const host = parseFloat(tr.querySelector('input[data-field="host"]').value) || 0;
+                const exh = parseFloat(tr.querySelector('input[data-field="exhibitor"]').value) || 0;
+                const aud = parseFloat(tr.querySelector('input[data-field="audience"]').value) || 0;
+                const total = parseFloat(document.getElementById('direct-' + (i + 1)).textContent.replace(/,/g, '')) || 0;
+                const row = addRowWithBorder(ws, [directNames[i], host, exh, aud, total]);
+                if (i === 0) directRowStart = row.number;
+                // 合计列 = B+C+D（公式）
+                ws.getCell('E' + row.number).value = { formula: 'B' + row.number + '+C' + row.number + '+D' + row.number, result: total };
+                ws.getCell('E' + row.number).border = thinBorder;
+                ws.getCell('E' + row.number).alignment = { horizontal: 'center', vertical: 'middle' };
+                ws.getCell('E' + row.number).numFmt = '#,##0';
+            }
+            const directRowEnd = directRowStart + directNames.length - 1;
+            // 总计行（带 SUM 公式）
+            const dTotalArr = [
+                '直接总计',
+                parseFloat(document.getElementById('direct-host-total').textContent.replace(/,/g, '')) || 0,
+                parseFloat(document.getElementById('direct-exhibitor-total').textContent.replace(/,/g, '')) || 0,
+                parseFloat(document.getElementById('direct-audience-total').textContent.replace(/,/g, '')) || 0,
+                parseFloat(document.getElementById('direct-grand-total').textContent.replace(/,/g, '')) || 0
+            ];
+            const dTotal = addRowWithBorder(ws, dTotalArr, true);
+            const dTotalR = dTotal.number;
+            // 覆盖为公式
+            ['B', 'C', 'D', 'E'].forEach(col => {
+                ws.getCell(col + dTotalR).value = { formula: 'SUM(' + col + directRowStart + ':' + col + directRowEnd + ')', result: dTotalArr[col === 'B' ? 1 : col === 'C' ? 2 : col === 'D' ? 3 : 4] };
+                ws.getCell(col + dTotalR).numFmt = '#,##0';
+            });
+            // 样式
+            dTotal.eachCell((cell) => {
+                cell.border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+            });
+
+            ws.addRow([]); // 空行
+
+            // ======= 二、间接收入 =======
+            sectionRow = ws.addRow(['二、间接收入明细']);
+            sectionRow.font = { bold: true, size: 13 };
+            ws.mergeCells('A' + sectionRow.number + ':E' + sectionRow.number);
+            sectionRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+
+            // 表头
+            const indirectHeaders = ['收入项目', '间接主办', '间接展商', '间接观众', '间接合计'];
+            const hRow2 = ws.addRow(indirectHeaders);
+            hRow2.eachCell((cell) => {
+                cell.border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } };
+                cell.font = { bold: true, size: 11 };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            });
+
+            const indirectNames = [
+                '餐饮', '住宿', '交通', '物流', '旅游', '场馆搭建支出', '广告支出', '综合服务费',
+                '展品销售额', '安保服务费', '劳务支出', '其他服务费支出', '电检', '礼品支出',
+                '印刷支出', '展馆租赁支出', '租赁设备支出', '公关服务', '法律、咨询服务',
+                '其他服务收入', '项目投资', '品牌收益', '城市其他间接收益', '娱乐消费', '购物消费'
+            ];
+            let indirectRowStart = 0;
+            for (let i = 0; i < indirectNames.length; i++) {
+                const tr = document.getElementById('indirect-' + (i + 1)).closest('tr');
+                const host = parseFloat(tr.querySelector('input[data-field="host"]').value) || 0;
+                const exh = parseFloat(tr.querySelector('input[data-field="exhibitor"]').value) || 0;
+                const aud = parseFloat(tr.querySelector('input[data-field="audience"]').value) || 0;
+                const total = parseFloat(document.getElementById('indirect-' + (i + 1)).textContent.replace(/,/g, '')) || 0;
+                const row = addRowWithBorder(ws, [indirectNames[i], host, exh, aud, total]);
+                if (i === 0) indirectRowStart = row.number;
+                // 合计列 = B+C+D（公式）
+                ws.getCell('E' + row.number).value = { formula: 'B' + row.number + '+C' + row.number + '+D' + row.number, result: total };
+                ws.getCell('E' + row.number).border = thinBorder;
+                ws.getCell('E' + row.number).alignment = { horizontal: 'center', vertical: 'middle' };
+                ws.getCell('E' + row.number).numFmt = '#,##0';
+            }
+            const indirectRowEnd = indirectRowStart + indirectNames.length - 1;
+            // 总计行（带 SUM 公式）
+            const iTotalArr = [
+                '间接总计',
+                parseFloat(document.getElementById('indirect-host-total').textContent.replace(/,/g, '')) || 0,
+                parseFloat(document.getElementById('indirect-exhibitor-total').textContent.replace(/,/g, '')) || 0,
+                parseFloat(document.getElementById('indirect-audience-total').textContent.replace(/,/g, '')) || 0,
+                parseFloat(document.getElementById('indirect-grand-total').textContent.replace(/,/g, '')) || 0
+            ];
+            const iTotal = addRowWithBorder(ws, iTotalArr, true);
+            const iTotalR = iTotal.number;
+            ['B', 'C', 'D', 'E'].forEach(col => {
+                ws.getCell(col + iTotalR).value = { formula: 'SUM(' + col + indirectRowStart + ':' + col + indirectRowEnd + ')', result: iTotalArr[col === 'B' ? 1 : col === 'C' ? 2 : col === 'D' ? 3 : 4] };
+                ws.getCell(col + iTotalR).numFmt = '#,##0';
+            });
+            iTotal.eachCell((cell) => {
+                cell.border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+            });
+
+            ws.addRow([]); // 空行
+
+            // ======= 三、汇总与系数 =======
+            const sectionRow3 = ws.addRow(['三、汇总与系数']);
+            sectionRow3.font = { bold: true, size: 13 };
+            ws.mergeCells('A' + sectionRow3.number + ':E' + sectionRow3.number);
+            sectionRow3.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+
+            // 拉动系数（公式：间接总计/直接总计）
+            const pullRow = ws.addRow(['拉动系数', 0]);
+            pullRow.getCell(1).border = thinBorder;
+            pullRow.getCell(1).font = { bold: true, size: 11 };
+            pullRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+            pullRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+            pullRow.getCell(2).border = thinBorder;
+            pullRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+            pullRow.getCell(2).numFmt = '"1:"0.00';
+            // 公式：间接总计(E{iTotalR}) / 直接总计(E{dTotalR})
+            pullRow.getCell(2).value = { formula: 'E' + iTotalR + '/E' + dTotalR, result: parseFloat(String(pullCoefficient).replace(/,/g, '')) || 0 };
+
+            ws.addRow([]); // 空行
+
+            // 采样数据（观众3列 + 展商3列）
+             const sampleData = [
+                 {
+                     label: '观众',
+                     items: ['观众采样个数', '观众实际人数', '观众倍数'],
+                     values: [parseFloat(aSample) || 0, parseFloat(aActual) || 0, parseFloat(aMultiple) || 0]
+                 },
+                 {
+                     label: '展商',
+                     items: ['展商采样个数', '展商实际个数', '展商倍数'],
+                     values: [parseFloat(eSample) || 0, parseFloat(eActual) || 0, parseFloat(eMultiple) || 0]
+                 }
+             ];
+             sampleData.forEach(group => {
+                 // 指标行（占 A-C 三列）
+                 const hRow = ws.addRow([group.items[0], group.items[1], group.items[2]]);
+                 hRow.eachCell((cell, col) => {
+                     if (col <= 3) {
+                         cell.border = thinBorder;
+                         cell.font = { bold: true, size: 11 };
+                         cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+                     }
+                 });
+                 // 数值行
+                 const vRow = ws.addRow([0, group.values[1], 0]);
+                 const vRowNum = vRow.number;
+                 // A列 采样个数 = B * 比例（公式）
+                 const rate = group.label === '观众' ? 0.05 : 0.1;
+                 const aResult = group.values[1] * rate;
+                 ws.getCell('A' + vRowNum).value = { formula: 'B' + vRowNum + '*' + rate, result: aResult };
+                 ws.getCell('A' + vRowNum).numFmt = '#,##0';
+                 ws.getCell('A' + vRowNum).border = thinBorder;
+                 ws.getCell('A' + vRowNum).alignment = { horizontal: 'center', vertical: 'middle' };
+                 // B列 实际人数（静态值）
+                 ws.getCell('B' + vRowNum).value = group.values[1];
+                 ws.getCell('B' + vRowNum).numFmt = '#,##0';
+                 ws.getCell('B' + vRowNum).border = thinBorder;
+                 ws.getCell('B' + vRowNum).alignment = { horizontal: 'center', vertical: 'middle' };
+                 // C列 倍数 = B / A（公式，保留整数）
+                 const cResult = Math.round(group.values[2] || (1 / rate));
+                 ws.getCell('C' + vRowNum).value = { formula: 'ROUND(B' + vRowNum + '/A' + vRowNum + ',0)', result: cResult };
+                 ws.getCell('C' + vRowNum).numFmt = '0';
+                 ws.getCell('C' + vRowNum).border = thinBorder;
+                 ws.getCell('C' + vRowNum).alignment = { horizontal: 'center', vertical: 'middle' };
+                 ws.addRow([]);
+             });
+
+            // 导出文件
+            const fileName = exhibitionName + '_数据统计_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+            wb.xlsx.writeBuffer().then(function(buffer) {
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                saveAs(blob, fileName);
+            }).catch(function(err) {
+                console.error('导出失败:', err);
+                alert('导出失败，请检查网络连接后重试');
+            });
+        }
+
+        console.log('整合页面已加载，等待子页面数据...');
+    </script>
+</body>
+</html>
