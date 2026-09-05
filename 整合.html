@@ -320,9 +320,16 @@
             <div class="stats-container">
                 <div class="page-title">
                     展会数据统计计算系统
+                    <button class="btn-export" onclick="saveSettings()" title="将当前所有设置保存为 JSON 文件">
+                        <i class="fas fa-save mr-1"></i> 保存设置
+                    </button>
+                    <button class="btn-export" onclick="document.getElementById('importSettingsFile').click()" title="从 JSON 文件导入设置">
+                        <i class="fas fa-upload mr-1"></i> 导入设置
+                    </button>
                     <button class="btn-export" onclick="exportStatsExcel()">
                         <i class="fas fa-file-excel mr-1"></i> 导出 Excel
                     </button>
+                    <input type="file" id="importSettingsFile" accept="application/json,.json" style="display:none" onchange="importSettings(event)">
                 </div>
 
                 <!-- 一、展会基本信息与系数 -->
@@ -637,10 +644,12 @@
             const container = document.querySelector('.stats-container');
             if (container) {
                 container.querySelectorAll('input').forEach(inp => {
-                    inp.addEventListener('input', calculateAll);
-                    inp.addEventListener('change', calculateAll);
+                    inp.addEventListener('input', function() { calculateAll(); scheduleAutoSave(); });
+                    inp.addEventListener('change', function() { calculateAll(); scheduleAutoSave(); });
                 });
             }
+            // 优先从本地恢复上次保存的设置
+            loadSettingsLocal();
             calculateAll();
         });
 
@@ -657,6 +666,9 @@
             const eActual = document.getElementById('exhibitorActual').value || 0;
             const aMultiple = document.getElementById('audienceMultiple').textContent;
             const eMultiple = document.getElementById('exhibitorMultiple').textContent;
+            // 读取用户在页面上实际调整的采样比例（避免导出时用写死默认值）
+            const aRate = parseFloat(document.getElementById('audienceRate').value) || 0.05;
+            const eRate = parseFloat(document.getElementById('exhibitorRate').value) || 0.1;
 
             // 边框样式
             const thinBorder = {
@@ -877,8 +889,8 @@
                  // 数值行
                  const vRow = ws.addRow([0, group.values[1], 0]);
                  const vRowNum = vRow.number;
-                 // A列 采样个数 = B * 比例（公式）
-                 const rate = group.label === '观众' ? 0.05 : 0.1;
+                // A列 采样个数 = B * 比例（公式，使用用户在页面调整的实际比例）
+                const rate = group.label === '观众' ? aRate : eRate;
                  const aResult = group.values[1] * rate;
                  ws.getCell('A' + vRowNum).value = { formula: 'B' + vRowNum + '*' + rate, result: aResult };
                  ws.getCell('A' + vRowNum).numFmt = '#,##0';
@@ -907,6 +919,149 @@
                 console.error('导出失败:', err);
                 alert('导出失败，请检查网络连接后重试');
             });
+        }
+
+        // ===== 设置保存与导入 =====
+        const SETTINGS_STORAGE_KEY = 'exhibitionStatsSettings';
+        const SETTINGS_VERSION = 1;
+
+        // 收集当前统计页面所有设置项
+        function collectSettings() {
+            const settings = {
+                version: SETTINGS_VERSION,
+                savedAt: new Date().toISOString(),
+                exhibitionName: document.getElementById('exhibitionName').value,
+                audienceRate: document.getElementById('audienceRate').value,
+                exhibitorRate: document.getElementById('exhibitorRate').value,
+                audienceSample: document.getElementById('audienceSample').value,
+                audienceActual: document.getElementById('audienceActual').value,
+                exhibitorSample: document.getElementById('exhibitorSample').value,
+                exhibitorActual: document.getElementById('exhibitorActual').value,
+                direct: [],
+                indirect: []
+            };
+            for (let i = 1; i <= 8; i++) {
+                const tr = document.getElementById('direct-' + i).closest('tr');
+                settings.direct.push({
+                    host: tr.querySelector('input[data-field="host"]').value,
+                    exhibitor: tr.querySelector('input[data-field="exhibitor"]').value,
+                    audience: tr.querySelector('input[data-field="audience"]').value
+                });
+            }
+            for (let i = 1; i <= 25; i++) {
+                const tr = document.getElementById('indirect-' + i).closest('tr');
+                // 保存设置时排除「间接展商」「间接观众」两列，仅保留间接主办
+                settings.indirect.push({
+                    host: tr.querySelector('input[data-field="host"]').value
+                });
+            }
+            return settings;
+        }
+
+        // 将设置项应用到页面
+        function applySettings(s) {
+            if (!s || typeof s !== 'object') return false;
+            if (s.exhibitionName !== undefined) document.getElementById('exhibitionName').value = s.exhibitionName;
+            if (s.audienceRate !== undefined) document.getElementById('audienceRate').value = s.audienceRate;
+            if (s.exhibitorRate !== undefined) document.getElementById('exhibitorRate').value = s.exhibitorRate;
+            if (s.audienceSample !== undefined) document.getElementById('audienceSample').value = s.audienceSample;
+            if (s.audienceActual !== undefined) document.getElementById('audienceActual').value = s.audienceActual;
+            if (s.exhibitorSample !== undefined) document.getElementById('exhibitorSample').value = s.exhibitorSample;
+            if (s.exhibitorActual !== undefined) document.getElementById('exhibitorActual').value = s.exhibitorActual;
+
+            (s.direct || []).forEach((d, idx) => {
+                const cell = document.getElementById('direct-' + (idx + 1));
+                if (!cell) return;
+                const tr = cell.closest('tr');
+                if (d.host !== undefined) tr.querySelector('input[data-field="host"]').value = d.host;
+                if (d.exhibitor !== undefined) tr.querySelector('input[data-field="exhibitor"]').value = d.exhibitor;
+                if (d.audience !== undefined) tr.querySelector('input[data-field="audience"]').value = d.audience;
+            });
+            (s.indirect || []).forEach((d, idx) => {
+                const cell = document.getElementById('indirect-' + (idx + 1));
+                if (!cell) return;
+                const tr = cell.closest('tr');
+                // 仅恢复间接主办；间接展商/间接观众 不随设置导入（由子页面数据自动填充）
+                if (d.host !== undefined) tr.querySelector('input[data-field="host"]').value = d.host;
+            });
+            calculateAll();
+            return true;
+        }
+
+        // 保存设置到本地（localStorage，自动持久化）
+        function saveSettingsLocal() {
+            try {
+                const settings = collectSettings();
+                localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+            } catch (e) {
+                // localStorage 不可用时忽略，不影响手动保存文件
+            }
+        }
+
+        // 从本地恢复设置（页面加载时）
+        function loadSettingsLocal() {
+            try {
+                const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+                if (!raw) return false;
+                const settings = JSON.parse(raw);
+                return applySettings(settings);
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // 保存设置到文件（JSON 下载）
+        function saveSettings() {
+            const settings = collectSettings();
+            const name = (document.getElementById('exhibitionName').value || '展会').replace(/[\\/:*?"<>|]/g, '_');
+            const json = JSON.stringify(settings, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const fileName = name + '_设置_' + new Date().toISOString().slice(0, 10) + '.json';
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            // 同时写入本地，方便下次自动恢复
+            saveSettingsLocal();
+            updateStatus('success', '设置已保存为文件并同步到本地：' + fileName);
+        }
+
+        // 从文件导入设置
+        function importSettings(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const settings = JSON.parse(e.target.result);
+                    if (!applySettings(settings)) {
+                        alert('文件格式不正确，无法导入设置');
+                        return;
+                    }
+                    saveSettingsLocal();
+                    updateStatus('success', '已导入设置：' + file.name);
+                } catch (err) {
+                    alert('导入失败：文件不是有效的设置 JSON\n' + err.message);
+                } finally {
+                    // 重置 file input，允许重复导入同一文件
+                    event.target.value = '';
+                }
+            };
+            reader.onerror = function() {
+                alert('读取文件失败，请重试');
+                event.target.value = '';
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        // 统计页面输入变化时，自动保存到本地（防抖 600ms）
+        let _settingsSaveTimer = null;
+        function scheduleAutoSave() {
+            if (_settingsSaveTimer) clearTimeout(_settingsSaveTimer);
+            _settingsSaveTimer = setTimeout(saveSettingsLocal, 600);
         }
 
         console.log('整合页面已加载，等待子页面数据...');
