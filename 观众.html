@@ -171,6 +171,15 @@
             <p class="text-lg text-gray-600 max-w-3xl mx-auto">
                 自主调整各项参数占比，实时生成符合需求的模拟观众数据
             </p>
+            <div class="flex justify-center gap-3 mt-6">
+                <button onclick="pSaveSettings()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg shadow transition-colors flex items-center">
+                    <i class="fas fa-save mr-2"></i> 保存设置
+                </button>
+                <button onclick="document.getElementById('importSettingsFile').click()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow transition-colors flex items-center">
+                    <i class="fas fa-upload mr-2"></i> 导入设置
+                </button>
+                <input type="file" id="importSettingsFile" accept="application/json,.json" style="display:none" onchange="pImportSettings(event)">
+            </div>
         </div>
 
         <!-- 数据概览卡片（放在最顶部，全宽） -->
@@ -615,6 +624,99 @@
     </div>
 
     <script>
+        // ===== 设置保存与导入（通用：按 id 收集所有 input/select/textarea） =====
+        const SETTINGS_STORAGE_KEY_SUB = 'audiencePageSettings';
+
+        function pCollectInputs() {
+            const data = {};
+            document.querySelectorAll('input, select, textarea').forEach(el => {
+                if (!el.id) return;
+                const t = el.type;
+                if (t === 'button' || t === 'submit' || t === 'reset' || t === 'file' || t === 'hidden' || t === 'image') return;
+                if (t === 'checkbox' || t === 'radio') {
+                    data[el.id] = el.checked;
+                } else {
+                    data[el.id] = el.value;
+                }
+            });
+            return data;
+        }
+
+        function pApplyInputs(data) {
+            if (!data || typeof data !== 'object') return false;
+            Object.keys(data).forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const t = el.type;
+                if (t === 'checkbox' || t === 'radio') {
+                    el.checked = !!data[id];
+                } else {
+                    el.value = data[id];
+                }
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            return true;
+        }
+
+        function pSaveSettingsLocal() {
+            try {
+                localStorage.setItem(SETTINGS_STORAGE_KEY_SUB, JSON.stringify(pCollectInputs()));
+            } catch (e) {}
+        }
+
+        function pLoadSettingsLocal() {
+            try {
+                const raw = localStorage.getItem(SETTINGS_STORAGE_KEY_SUB);
+                if (!raw) return false;
+                return pApplyInputs(JSON.parse(raw));
+            } catch (e) { return false; }
+        }
+
+        function pSaveSettings() {
+            const data = pCollectInputs();
+            const payload = { app: 'audience-settings', savedAt: new Date().toISOString(), inputs: data };
+            const name = (document.title || '观众').replace(/[\\/:*?"<>|]/g, '_');
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const fileName = name + '_设置_' + new Date().toISOString().slice(0, 10) + '.json';
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            pSaveSettingsLocal();
+            alert('设置已保存为文件：' + fileName);
+        }
+
+        function pImportSettings(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const payload = JSON.parse(e.target.result);
+                    const data = payload.inputs || payload;
+                    if (!pApplyInputs(data)) { alert('文件格式不正确，无法导入设置'); return; }
+                    pSaveSettingsLocal();
+                    alert('已导入设置：' + file.name);
+                } catch (err) {
+                    alert('导入失败：文件不是有效的设置 JSON\n' + err.message);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.onerror = function() { alert('读取文件失败，请重试'); event.target.value = ''; };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        let _pSaveTimer = null;
+        function pScheduleAutoSave() {
+            if (_pSaveTimer) clearTimeout(_pSaveTimer);
+            _pSaveTimer = setTimeout(pSaveSettingsLocal, 600);
+        }
+
         // 应用状态
         const state = {
             sampleSize: 500,
@@ -1841,6 +1943,11 @@
         const initApp = () => {
             initSliders();
             initRangeValueInputs();
+
+            // 恢复本地保存的设置，并开启输入自动保存
+            pLoadSettingsLocal();
+            document.addEventListener('input', pScheduleAutoSave);
+            document.addEventListener('change', pScheduleAutoSave);
         };
 
         // 页面加载完成后初始化
