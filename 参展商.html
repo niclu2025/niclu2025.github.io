@@ -2525,6 +2525,127 @@ function exportToExcel() {
                     document.getElementById('loader').classList.add('hidden');
                 }, 500);
             });
+// ============================================================
+// 区间占比计算工具：保证每个字段各区间百分比之和精确等于 100%
+// ============================================================
+
+// 最大余数法（Hamilton 法）配平占比：
+// 先按指定小数位向下取整，再把剩余份额按"小数部分从大到小"逐个分配，最终合计精确等于 100
+function distributePercentages(counts, total, decimals) {
+    const dp = (decimals === undefined) ? 1 : decimals;
+    const n = counts.length;
+    const factor = Math.pow(10, dp);
+    const realTotal = total > 0 ? total : counts.reduce((a, b) => a + b, 0);
+    if (!realTotal) return counts.map(function () { return 0; });
+
+    const target = Math.round(100 * factor); // 目标总和（放大后的整数，如 1000 表示 100.0%）
+    const scaled = counts.map(function (c) { return c / realTotal * 100 * factor; });
+    const base = scaled.map(function (v) { return Math.floor(v + 1e-9); });
+    let diff = target - base.reduce(function (a, b) { return a + b; }, 0);
+
+    // 按小数余数从大到小排序（余数相同则数量多者优先，再按原顺序）
+    const order = scaled.map(function (v, i) {
+        return { i: i, rest: v - base[i] };
+    }).sort(function (a, b) {
+        return (b.rest - a.rest) || (counts[b.i] - counts[a.i]) || (a.i - b.i);
+    });
+
+    // 总和不足：差额逐个补给余数最大的区间（差额可能 >1，循环多轮）
+    let p = 0;
+    while (diff > 0 && n > 0) {
+        base[order[p % n].i] += 1;
+        p++;
+        diff--;
+    }
+    // 总和超出：从余数最小的区间逐个扣减
+    p = 0;
+    const guard = order.length * 1000;
+    while (diff < 0 && n > 0 && p < guard) {
+        const idx = order[order.length - 1 - (p % n)].i;
+        if (base[idx] > 0) {
+            base[idx] -= 1;
+            diff++;
+        }
+        p++;
+    }
+
+    return base.map(function (v) { return parseFloat((v / factor).toFixed(dp)); });
+}
+
+// 构建某个字段的 4 段区间统计
+// 计数方式为"互斥且穷尽"（每个数据点只落在一个区间），因此各区间数量之和 = 数据总数，
+// 再配合最大余数法，各区间百分比之和恒为 100.0%
+function buildRangeAnalysis(field, values) {
+    const n = values.length;
+    if (!n) return { min: 0, max: 0, total: 0, ranges: [] };
+
+    const min = Math.min.apply(null, values);
+    const max = Math.max.apply(null, values);
+    const range = max - min;
+
+    // 1) 计算 4 段区间的上界
+    const upper = [];
+    if (field.noRounding) {
+        // 面积、人员：自然区间，不取整
+        const interval = Math.max(1, Math.ceil(range / 4));
+        for (let i = 0; i < 4; i++) {
+            let u = (i === 3) ? max : min + (i + 1) * interval - 1;
+            if (u > max) u = max;
+            upper.push(u);
+        }
+    } else {
+        // 金额：整齐边界（整十 / 整百 / 整千）
+        let baseInterval;
+        if (range >= 10000) baseInterval = 1000;
+        else if (range >= 1000) baseInterval = 100;
+        else if (range >= 100) baseInterval = 50;
+        else baseInterval = 10;
+
+        const interval = Math.max(baseInterval, Math.ceil(range / 4 / baseInterval) * baseInterval);
+        const adjustedMin = Math.floor(min / baseInterval) * baseInterval;
+        for (let i = 0; i < 4; i++) {
+            let u = (i === 3) ? max : adjustedMin + (i + 1) * interval;
+            if (u > max) u = max;
+            if (u < min) u = min;
+            upper.push(u);
+        }
+    }
+    // 上界必须单调不减，避免出现空档或倒挂
+    for (let i = 1; i < 4; i++) {
+        if (upper[i] < upper[i - 1]) upper[i] = upper[i - 1];
+    }
+    upper[3] = max;
+
+    // 2) 互斥计数：数据点落入"第一个能容纳它"的区间
+    const counts = [0, 0, 0, 0];
+    values.forEach(function (v) {
+        let idx = 0;
+        while (idx < 3 && v > upper[idx]) idx++;
+        counts[idx] += 1;
+    });
+
+    // 3) 占比配平，合计精确 100.0%
+    const percentages = distributePercentages(counts, n, 1);
+
+    // 4) 组装区间（中间区间起点 = 上一区间上界 + 1）
+    const ranges = [];
+    for (let i = 0; i < 4; i++) {
+        let start = (i === 0) ? min : upper[i - 1] + 1;
+        if (start > max) start = max;
+        let end = upper[i];
+        if (end < start) end = start;
+        if (end > max) end = max;
+        ranges.push({
+            start: start,
+            end: end,
+            count: counts[i],
+            percentage: percentages[i]
+        });
+    }
+
+    return { min: min, max: max, total: n, ranges: ranges };
+}
+
 // 导出区间分析为Excel（每个字段一个Sheet）
 function exportAnalysisToExcel() {
     if (allData.length === 0) {
@@ -2559,93 +2680,9 @@ function exportAnalysisToExcel() {
             // 获取字段的所有值
             const values = allData.map(item => Math.round(item[field.key]));
             
-            // 计算最小值和最大值
-            const min = Math.min(...values);
-            const max = Math.max(...values);
-            
-            let ranges = [];
-            
-            if (field.noRounding) {
-                // 面积和人员字段：直接计算区间，不取整
-                const range = max - min;
-                const interval = Math.ceil(range / 4);
-                
-                for (let i = 0; i < 4; i++) {
-                    const start = min + i * interval;
-                    let end;
-                    
-                    if (i === 3) {
-                        end = max;
-                    } else {
-                        end = min + (i + 1) * interval - 1;
-                    }
-                    
-                    const count = values.filter(v => {
-                        if (i === 0) return v >= start && v <= end;
-                        if (i === 3) return v >= start && v <= end;
-                        return v >= start && v <= end;
-                    }).length;
-                    
-                    const percentage = (count / values.length * 100).toFixed(1);
-                    
-                    ranges.push({
-                        start: i === 0 ? min : start,
-                        end: i === 3 ? max : end,
-                        count,
-                        percentage: parseFloat(percentage)
-                    });
-                }
-            } else {
-                // 金额字段：生成整齐的区间边界
-                const range = max - min;
-                let baseInterval;
-                if (range >= 10000) {
-                    baseInterval = 1000;
-                } else if (range >= 1000) {
-                    baseInterval = 100;
-                } else if (range >= 100) {
-                    baseInterval = 50;
-                } else {
-                    baseInterval = 10;
-                }
-                
-                let interval = Math.ceil(range / 4 / baseInterval) * baseInterval;
-                const adjustedMin = Math.floor(min / baseInterval) * baseInterval;
-                
-                for (let i = 0; i < 4; i++) {
-                    let start, end;
-                    
-                    if (i === 0) {
-                        start = min;
-                        end = adjustedMin + interval;
-                    } else if (i === 3) {
-                        start = adjustedMin + i * interval + 1;
-                        end = max;
-                    } else {
-                        start = adjustedMin + i * interval + 1;
-                        end = adjustedMin + (i + 1) * interval;
-                    }
-                    
-                    if (start > max) start = max;
-                    if (end < start) end = start;
-                    if (end > max) end = max;
-                    
-                    const count = values.filter(v => {
-                        if (i === 0) return v >= start && v <= end;
-                        if (i === 3) return v >= start && v <= end;
-                        return v >= start && v <= end;
-                    }).length;
-                    
-                    const percentage = (count / values.length * 100).toFixed(1);
-                    
-                    ranges.push({
-                        start,
-                        end,
-                        count,
-                        percentage: parseFloat(percentage)
-                    });
-                }
-            }
+            // 统一使用共享的区间统计逻辑（计数互斥、占比合计恒为 100%）
+            const analysis = buildRangeAnalysis(field, values);
+            const ranges = analysis.ranges;
             
             // 调整区间边界，确保连续且不重叠
             const adjustedRanges = ranges.map((range, index) => {
@@ -2813,99 +2850,8 @@ function generateRangeAnalysis() {
         const min = Math.min(...values);
         const max = Math.max(...values);
         
-        let ranges = [];
-        
-        if (field.noRounding) {
-            // 面积和人员字段：直接计算区间，不取整
-            const range = max - min;
-            const interval = Math.ceil(range / 4);
-            
-            for (let i = 0; i < 4; i++) {
-                const start = min + i * interval;
-                let end;
-                
-                if (i === 3) {
-                    end = max; // 最后一个区间包含最大值
-                } else {
-                    end = min + (i + 1) * interval - 1;
-                }
-                
-                const count = values.filter(v => {
-                    if (i === 0) return v >= start && v <= end;
-                    if (i === 3) return v >= start && v <= end;
-                    return v >= start && v <= end;
-                }).length;
-                
-                const percentage = (count / values.length * 100).toFixed(1);
-                
-                ranges.push({
-                    start: i === 0 ? min : start,
-                    end: i === 3 ? max : end,
-                    count,
-                    percentage: parseFloat(percentage)
-                });
-            }
-        } else {
-            // 金额字段：生成整齐的区间边界
-            const range = max - min;
-            
-            // 确定合适的区间宽度（整十、整百、整千）
-            let baseInterval;
-            if (range >= 10000) {
-                baseInterval = 1000; // 万级以上用1000的倍数
-            } else if (range >= 1000) {
-                baseInterval = 100;  // 千级以上用100的倍数
-            } else if (range >= 100) {
-                baseInterval = 50;   // 百级以上用50的倍数
-            } else {
-                baseInterval = 10;   // 其他用10的倍数
-            }
-            
-            // 计算近似的区间宽度，然后调整到baseInterval的倍数
-            let interval = Math.ceil(range / 4 / baseInterval) * baseInterval;
-            
-            // 调整最小值到baseInterval的倍数（向下取整）
-            const adjustedMin = Math.floor(min / baseInterval) * baseInterval;
-            
-            // 生成4个整齐的区间
-            for (let i = 0; i < 4; i++) {
-                let start, end;
-                
-                if (i === 0) {
-                    // 第一个区间从实际最小值开始
-                    start = min;
-                    end = adjustedMin + interval;
-                } else if (i === 3) {
-                    // 最后一个区间到实际最大值结束
-                    start = adjustedMin + i * interval + 1;
-                    end = max;
-                } else {
-                    // 中间区间使用整齐的边界
-                    start = adjustedMin + i * interval + 1;
-                    end = adjustedMin + (i + 1) * interval;
-                }
-                
-                // 确保边界合理
-                if (start > max) start = max;
-                if (end < start) end = start;
-                if (end > max) end = max;
-                
-                const count = values.filter(v => {
-                    if (i === 0) return v >= start && v <= end;
-                    if (i === 3) return v >= start && v <= end;
-                    return v >= start && v <= end;
-                }).length;
-                
-                const percentage = (count / values.length * 100).toFixed(1);
-                
-                ranges.push({
-                    start,
-                    end,
-                    count,
-                    percentage: parseFloat(percentage)
-                });
-            }
-        }
+        // 统一使用共享的区间统计逻辑（计数互斥、占比合计恒为 100%）
+        const ranges = buildRangeAnalysis(field, values).ranges;
         
         // 创建字段分析容器
         const fieldContainer = document.createElement('div');
@@ -2985,11 +2931,14 @@ function generateRangeAnalysis() {
                 endFormatted += '人';
             }
             
-            // 区间内容
+            // 区间内容（空区间不再显示成 "101 - 101"，直接标注无数据）
+            const rangeText = (range.count === 0 && range.start >= range.end)
+                ? `区间 ${index + 1}: 无数据`
+                : `区间 ${index + 1}: ${startFormatted} - ${endFormatted}`;
             rangeItem.innerHTML = `
                 <div class="flex justify-between items-center mb-2">
                     <div class="font-medium text-gray-800">
-                        区间 ${index + 1}: ${startFormatted} - ${endFormatted}
+                        ${rangeText}
                     </div>
                     <div class="text-primary font-medium bg-primary/10 px-2 py-1 rounded">
                         ${range.percentage}% (${range.count}家)
@@ -3002,6 +2951,17 @@ function generateRangeAnalysis() {
             
             rangeList.appendChild(rangeItem);
         });
+        
+        // 合计栏：占比合计恒为 100%（四舍五入已按最大余数法配平）
+        const totalPercent = ranges.reduce((sum, r) => sum + r.percentage, 0);
+        const totalCount = ranges.reduce((sum, r) => sum + r.count, 0);
+        const totalDiv = document.createElement('div');
+        totalDiv.className = 'flex justify-between items-center px-3 py-2 rounded-lg bg-gray-100 text-sm text-gray-700 font-medium';
+        totalDiv.innerHTML = `
+            <div>合计</div>
+            <div>${parseFloat(totalPercent.toFixed(1))}% (${totalCount}家)</div>
+        `;
+        rangeList.appendChild(totalDiv);
         
         fieldContainer.appendChild(rangeList);
         container.appendChild(fieldContainer);
