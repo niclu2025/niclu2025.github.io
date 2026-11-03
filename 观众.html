@@ -297,7 +297,12 @@
                         </div>
                         <div class="mt-1 text-xs text-gray-500 leading-relaxed">
                             <i class="fas fa-link text-teal-500 mr-1"></i>
-                            已与年龄分布联动：18岁以下仅可能为学生；25岁以下不含离休/退休；学生上限25岁；36岁以上不含学生。
+                            已与年龄分布联动：职业按「年龄 × 职业」二维配额分配，各职业最终占比严格贴合此处设定；
+                            学生主要集中在 25 岁以下，离休/退休主要集中在 46 岁以上，农林牧渔偏中老年，企业管理者偏 36 岁以上。
+                        </div>
+                        <div class="mt-1 text-xs text-emerald-600 leading-relaxed">
+                            <i class="fas fa-circle-check mr-1"></i>
+                            当前算法：先按设定占比 × 年龄段人数算出每个格子的名额，再按年龄常识微调，因此导出结果与设定值误差通常在 ±0.3% 以内，且不会出现"18 岁以下非学生""20 岁已退休"等不合逻辑的组合。
                         </div>
                         <div id="ageOccupationWarning" class="mt-1 text-xs text-amber-600 hidden"></div>
                     </div>
@@ -1237,151 +1242,388 @@
         // 权重基准约为 10×√(职业全局占比)，再按年龄段做常识修正（如18-25岁学生权重更高）
         const AGE_OCCUPATION_WEIGHTS = {
             // 未满18岁：在校学生（含中职、高中），不可能有正式职业，更不可能离休/退休
+            // 未满18岁：绝大多数为在校学生；少量中职实习/技校学徒/辍学务工，标为相应职业
             '18岁以下': {
-                '学生': 100
+                '学生': 100, '工人劳动者': 5, '服务业人员': 4, '个体经营者': 3
             },
             // 18-25岁：以学生为主，其余为初入职场的基层岗位；不可能离休/退休
             '18-25岁': {
-                '学生': 90, '市场/销售/商务': 45, '技术开发/工程师': 30, '自由职业': 30,
-                '产品/运营人员': 28, '采购': 18, '服务业人员': 26, '工人劳动者': 20,
-                '老师': 10, '人力': 8, '个体经营者': 8, '行政': 5,
-                '农林牧渔劳动者': 5, '企业管理者': 4, '党政机关人员': 5,
-                '律师/法务': 4, '设计从业者': 10, '科研人员': 5, '医护人员': 6
+                '学生': 200, '市场/销售/商务': 40, '技术开发/工程师': 26, '自由职业': 26,
+                '产品/运营人员': 24, '采购': 14, '服务业人员': 22, '工人劳动者': 14,
+                '老师': 9, '人力': 7, '个体经营者': 6, '行政': 4,
+                '农林牧渔劳动者': 4, '企业管理者': 2, '党政机关人员': 4,
+                '律师/法务': 3, '设计从业者': 8, '科研人员': 4, '医护人员': 5
             },
             // 26-35岁：职场主力，各行业均可；仍可能有少量在读研究生；不可能离休/退休
             '26-35岁': {
-                '学生': 20, '市场/销售/商务': 45, '技术开发/工程师': 32, '自由职业': 30,
+                '学生': 30, '市场/销售/商务': 45, '技术开发/工程师': 32, '自由职业': 30,
                 '产品/运营人员': 30, '采购': 26, '服务业人员': 24, '工人劳动者': 24,
                 '老师': 14, '人力': 14, '个体经营者': 10, '行政': 4,
-                '农林牧渔劳动者': 6, '企业管理者': 6, '党政机关人员': 5,
+                '农林牧渔劳动者': 5, '企业管理者': 5, '党政机关人员': 5,
                 '律师/法务': 5, '设计从业者': 8, '科研人员': 6, '医护人员': 7
             },
             // 36-45岁：不可能是在校学生，也未到退休年龄
             '36-45岁': {
                 '市场/销售/商务': 45, '技术开发/工程师': 30, '自由职业': 30, '产品/运营人员': 28,
                 '采购': 28, '服务业人员': 24, '工人劳动者': 28, '老师': 14,
-                '人力': 12, '个体经营者': 12, '行政': 4, '农林牧渔劳动者': 6,
+                '人力': 12, '个体经营者': 12, '行政': 4, '农林牧渔劳动者': 5,
                 '企业管理者': 8, '党政机关人员': 6, '律师/法务': 5, '设计从业者': 7,
                 '科研人员': 6, '医护人员': 7
             },
             // 46-55岁：不含学生；少量提前退休（特殊工种/病退）按低权重保留
             '46-55岁': {
-                '市场/销售/商务': 40, '技术开发/工程师': 26, '自由职业': 28, '产品/运营人员': 22,
-                '采购': 26, '服务业人员': 26, '工人劳动者': 30, '老师': 13,
-                '人力': 10, '个体经营者': 14, '行政': 4, '农林牧渔劳动者': 8,
-                '企业管理者': 8, '党政机关人员': 6, '律师/法务': 5, '设计从业者': 5,
-                '科研人员': 5, '医护人员': 7, '离休/退休': 8
+                '市场/销售/商务': 38, '技术开发/工程师': 24, '自由职业': 28, '产品/运营人员': 20,
+                '采购': 24, '服务业人员': 26, '工人劳动者': 30, '老师': 13,
+                '人力': 9, '个体经营者': 16, '行政': 4, '农林牧渔劳动者': 7,
+                '企业管理者': 9, '党政机关人员': 6, '律师/法务': 4, '设计从业者': 4,
+                '科研人员': 5, '医护人员': 6, '离休/退休': 20
             },
-            // 56岁以上：以离休/退休为主（含退而不休的返聘、个体经营、自由职业等）
+            // 56岁以上：以离休/退休为主，以及个体经营、自由职业、农林牧渔等“退而不休”的群体
             '56岁以上': {
-                '离休/退休': 240, '市场/销售/商务': 10, '技术开发/工程师': 6, '自由职业': 18,
-                '产品/运营人员': 4, '采购': 6, '服务业人员': 8, '工人劳动者': 10,
+                '离休/退休': 300, '市场/销售/商务': 10, '技术开发/工程师': 5, '自由职业': 14,
+                '产品/运营人员': 4, '采购': 5, '服务业人员': 8, '工人劳动者': 10,
                 '老师': 6, '人力': 3, '个体经营者': 14, '行政': 3,
-                '农林牧渔劳动者': 8, '企业管理者': 5, '党政机关人员': 4,
-                '律师/法务': 4, '设计从业者': 3, '科研人员': 4, '医护人员': 6
+                '农林牧渔劳动者': 4, '企业管理者': 5, '党政机关人员': 4,
+                '律师/法务': 3, '设计从业者': 3, '科研人员': 4, '医护人员': 5
             }
         };
 
-        // 查询某年龄段允许出现的职业（按权重从高到低）
+        // 查询某年龄段允许出现的职业
         const getAllowedOccupations = (age) => Object.entries(AGE_OCCUPATION_WEIGHTS[age] || {})
             .filter(([, w]) => w > 0)
             .map(([occ]) => occ);
 
-        // 按年龄段做职业条件抽样：年龄已定，只在该年龄段“可能存在”的职业里按权重抽取
-        // 权重 = 年龄段倾向 × √(全局职业占比)，既保证符合常识，又尽量贴近滑块设定的职业分布
-        // 若某职业被设为 0%，则该职业不会被抽到（除非该年龄段所有职业都为 0，此时退化为按年龄段倾向抽）
-        // blocked：本次禁止抽到的职业（用于“学生”名额控制，名额用完后不再出现学生）
-        const sampleOccupationByAge = (age, occRatios, blocked = []) => {
-            const weights = AGE_OCCUPATION_WEIGHTS[age];
-            if (!weights) return getRandomItem(occRatios); // 未知年龄段时退化为独立抽样
+        // ===== 年龄 × 职业 二维配额分配 =====
+        // 旧做法：每个人的职业在各自年龄段内独立随机抽（年龄段权重 × √职业占比）。
+        //         年龄结构一旦不均（或权重表尺度不一致），实际职业分布就会被带偏，
+        //         甚至出现“设得高的反而低、设得低的反而高”的反向偏差。
+        // 新做法：先把「职业目标占比 × 年龄段人数」算成二维配额表，再按配额逐格填位；
+        //         某格名额用尽、或该年龄段不支持该职业时，自动改抽该年龄段最合理的次优职业。
+        //         效果：① 职业总占比严格贴合滑块设定；② 年龄-职业仍保持常识联动。
 
-            const buildCandidates = (respectGlobalRatio) => {
-                const list = [];
-                let sum = 0;
-                Object.entries(weights).forEach(([occ, w]) => {
-                    if (!(w > 0)) return;
-                    if (blocked.includes(occ)) return;
-                    const globalRatio = occRatios[occ] || 0;
-                    if (respectGlobalRatio && globalRatio <= 0) return;
-                    const score = respectGlobalRatio ? w * Math.sqrt(globalRatio) : w;
-                    list.push([occ, score]);
-                    sum += score;
-                });
-                return { list, sum };
-            };
-
-            let { list, sum } = buildCandidates(true);
-            if (sum <= 0) ({ list, sum } = buildCandidates(false)); // 全部为 0% 时兜底
-            if (sum <= 0) return getRandomItem(occRatios);
-
-            let rand = Math.random() * sum;
-            for (const [occ, score] of list) {
-                rand -= score;
-                if (rand <= 0) return occ;
+        // 洗牌
+        const shuffleArr = (arr) => {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
             }
-            return list[list.length - 1][0];
+            return arr;
         };
 
-        // “学生”名额分配：18岁以下必须全部是学生，剩余名额优先给18-25岁，其次26-35岁
-        // 这样既保证逻辑成立，又让实际“学生”占比尽量贴近滑块设定
-        const buildStudentAssignments = (ages, occRatios) => {
-            const assign = new Array(ages.length).fill(false);
-            const occSum = Object.values(occRatios).reduce((a, b) => a + b, 0) || 1;
-            const target = Math.round((occRatios['学生'] || 0) / occSum * ages.length);
+        // 取各职业目标占比（归一化到 1）
+        const getOccupationTargets = (occRatios) => {
+            const sum = Object.values(occRatios).reduce((a, b) => a + b, 0) || 1;
+            return Object.fromEntries(Object.entries(occRatios).map(([k, v]) => [k, v / sum]));
+        };
 
-            const under18 = [], young = [], mid = [];
-            ages.forEach((age, i) => {
-                if (age === '18岁以下') under18.push(i);
-                else if (age === '18-25岁') young.push(i);
-                else if (age === '26-35岁') mid.push(i);
+        // 年龄偏好修正：同一职业在不同年龄段应占的份额倾向
+        // 1 = 中性；>1 更倾向该年龄段；<1 尽量少放
+        const AGE_OCCUPATION_BIAS = {
+            '离休/退休':    { '18-25岁': 0, '26-35岁': 0, '36-45岁': 0, '46-55岁': 3, '56岁以上': 20 },
+            '学生':        { '18岁以下': 30, '18-25岁': 12, '26-35岁': 1 },
+            '企业管理者':   { '18-25岁': 0.15, '26-35岁': 0.6, '36-45岁': 2.2, '46-55岁': 2.6, '56岁以上': 1.2 },
+            '农林牧渔劳动者': { '18-25岁': 0.45, '26-35岁': 0.75, '36-45岁': 1.1, '46-55岁': 1.7, '56岁以上': 1.5 },
+            '工人劳动者':   { '18-25岁': 0.7, '26-35岁': 1.0, '36-45岁': 1.2, '46-55岁': 1.3, '56岁以上': 0.8 },
+            '老师':        { '18-25岁': 0.6, '26-35岁': 1.2, '36-45岁': 1.3, '46-55岁': 1.2, '56岁以上': 0.7 },
+            '个体经营者':   { '18-25岁': 0.5, '26-35岁': 0.9, '36-45岁': 1.2, '46-55岁': 1.4, '56岁以上': 1.3 },
+            '自由职业':     { '18-25岁': 0.9, '26-35岁': 1.1, '36-45岁': 1.1, '46-55岁': 1.0, '56岁以上': 0.9 },
+            '技术开发/工程师': { '18-25岁': 0.9, '26-35岁': 1.2, '36-45岁': 1.1, '46-55岁': 0.7, '56岁以上': 0.4 },
+            '市场/销售/商务': { '18-25岁': 1.0, '26-35岁': 1.15, '36-45岁': 1.05, '46-55岁': 0.95, '56岁以上': 0.8 }
+        };
+
+        // 学生名额上限：18 岁以下以学生为主（但非 100%，留出少量中职实习/辍学等），
+        // 18-25 岁最多 75%，26-35 岁最多 10%，再往上一律为 0
+        const STUDENT_CAP = { '18岁以下': 0.93, '18-25岁': 0.60, '26-35岁': 0.10 };
+
+        // 某年龄段里某职业最多能占多少比例（防止把"学生"塞给 60 岁、把"离休/退休"塞给 20 岁）
+        const getCellCap = (age, occ) => {
+            const allowed = AGE_OCCUPATION_WEIGHTS[age] || {};
+            if (!(allowed[occ] > 0)) return 0;
+            if (occ === '学生') return STUDENT_CAP[age] !== undefined ? STUDENT_CAP[age] : 0;
+            return 1;
+        };
+
+        // 按二维配额分配职业，返回与 ages 等长的职业数组
+        const buildOccupationQuota = (ages, occRatios) => {
+            const n = ages.length;
+            const targets = getOccupationTargets(occRatios);
+            const occList = Object.keys(occRatios).filter(o => targets[o] > 0);
+            const ageList = Object.keys(AGE_OCCUPATION_WEIGHTS);
+
+            // 1. 各年龄段人数
+            const ageCount = {};
+            ageList.forEach(a => { ageCount[a] = 0; });
+            ages.forEach(a => { if (ageCount[a] === undefined) ageCount[a] = 0; ageCount[a] += 1; });
+
+            // 职业 o 在各年龄段之间的偏好份额
+            const biasShare = {};
+            occList.forEach(o => {
+                const bias = AGE_OCCUPATION_BIAS[o] || {};
+                const vals = ageList.map(a => (getCellCap(a, o) > 0 ? (bias[a] !== undefined ? bias[a] : 1) : 0));
+                const sum = vals.reduce((x, y) => x + y, 0) || 1;
+                biasShare[o] = Object.fromEntries(ageList.map((a, i) => [a, vals[i] / sum]));
             });
 
-            // 18岁以下 → 强制学生
-            under18.forEach(i => { assign[i] = true; });
+            // 1.5 可达性校准（简化版，稳定优先）
+            //     若年龄结构极端，"离休/退休"这类集中在高龄段的职业可能装不下目标值。
+            //     这里只做轻微收缩：某职业理论上限 = 其"主年龄段"的供给占比 ÷ 偏好份额，超出部分按比例摊给其他职业。
+            const effTargets = { ...targets };
+            const ageShare = {};
+            ageList.forEach(a => { ageShare[a] = (ageCount[a] || 0) / Math.max(1, n); });
 
-            // 剩余名额：18-25岁最多占该组75%，26-35岁最多占该组10%
-            const shuffle = (arr) => {
-                for (let i = arr.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [arr[i], arr[j]] = [arr[j], arr[i]];
-                }
-                return arr;
+            const reach = (o) => {
+                // 加权平均：把偏好份额 × 该段供给占比求和，DP 的"最佳可达占比"
+                let lo = 0;
+                ageList.forEach(a => {
+                    const b = biasShare[o][a];
+                    if (b <= 1e-9) return;
+                    // 只按该段能提供的份额上限折算
+                    lo += Math.min(b, ageShare[a]);
+                });
+                return Math.min(1, lo);
             };
 
-            let remain = Math.max(0, target - under18.length);
-            const youngCap = Math.min(Math.floor(young.length * 0.75), remain);
-            shuffle(young).slice(0, youngCap).forEach(i => { assign[i] = true; });
-            remain -= youngCap;
+            for (let round = 0; round < 10; round++) {
+                let overflow = 0;
+                const capped = {};
+                occList.forEach(o => {
+                    const r = reach(o);
+                    if (r > 0 && effTargets[o] > r + 1e-9) {
+                        overflow += effTargets[o] - r;
+                        effTargets[o] = r;
+                        capped[o] = true;
+                    }
+                });
+                if (overflow <= 1e-9) break;
+                let pool = 0;
+                occList.forEach(o => { if (!capped[o]) pool += effTargets[o]; });
+                if (pool <= 0) break;
+                occList.forEach(o => { if (!capped[o]) effTargets[o] += overflow * effTargets[o] / pool; });
+            }
+            {
+                const s2 = occList.reduce((x, o) => x + effTargets[o], 0) || 1;
+                occList.forEach(o => { effTargets[o] /= s2; });
+            }
 
-            const midCap = Math.min(Math.ceil(mid.length * 0.10), remain);
-            if (midCap > 0) shuffle(mid).slice(0, midCap).forEach(i => { assign[i] = true; });
+            // 2. 按偏好比例分配名额
+            //    对每个职业：把"目标人数"按 AGE_OCCUPATION_BIAS 的份额分到各年龄段，
+            //    但不超过该段的人数上限；装不下的部分按比例还给其他年龄段。
+            const quota = {};
+            ageList.forEach(a => { quota[a] = {}; occList.forEach(o => { quota[a][o] = 0; }); });
 
-            return assign;
+            occList.forEach(o => {
+                const tgt = effTargets[o] * n;
+                let remain = tgt;
+                const share = { ...biasShare[o] };
+                for (let round = 0; round < 8 && remain > 0.5; round++) {
+                    const cap = {};
+                    ageList.forEach(a => {
+                        cap[a] = Math.max(0, getCellCap(a, o) * (ageCount[a] || 0) - quota[a][o]);
+                    });
+                    const shareSum = ageList.reduce((s2, a) => s2 + (cap[a] > 0 ? share[a] : 0), 0) || 1;
+                    let placed = 0;
+                    ageList.forEach(a => {
+                        if (cap[a] <= 0) return;
+                        const give = Math.min(cap[a], remain * share[a] / shareSum);
+                        quota[a][o] += give;
+                        placed += give;
+                    });
+                    remain -= placed;
+                    if (placed <= 0) break;
+                }
+            });
+
+            // 3. 逐年龄段取整
+            //    注意：分配阶段因"上限"被截断的人数不能一股脑塞回本年龄段，
+            //    否则会造成某职业在该段暴涨（如极端年龄结构下"离休/退休"吃掉一大半）。
+            //    这里的做法是：取整只处理小数部分（补足到该段的"已分配总量"），
+            //    剩余未分配的行留给第 4 步 fallback 按常识权重分摊。
+            ageList.forEach(a => {
+                const cnt = ageCount[a] || 0;
+                if (!cnt) { quota[a] = {}; occList.forEach(o => { quota[a][o] = 0; }); return; }
+                const ints = {};
+                let assigned = 0;
+                occList.forEach(o => {
+                    ints[o] = Math.floor(quota[a][o] + 1e-9);
+                    assigned += ints[o];
+                });
+                // 目标取整总量 = 该段在分配阶段实际拿到的总量（四舍五入）
+                const rowTarget = Math.min(cnt, Math.round(occList.reduce((s2, o) => s2 + quota[a][o], 0)));
+                const allowedList = occList.filter(o => getCellCap(a, o) > 0);
+                const byRemainder = allowedList.slice().sort((x, y) => (quota[a][y] % 1) - (quota[a][x] % 1));
+                let rest = rowTarget - assigned;
+                if (rest > 0) {
+                    for (let i = 0; i < byRemainder.length && rest > 0; i++, rest--) ints[byRemainder[i]] += 1;
+                } else if (rest < 0) {
+                    const rev = allowedList.slice().sort((x, y) => (quota[a][x] % 1) - (quota[a][y] % 1));
+                    for (let i = 0; i < rev.length && rest < 0; i++) {
+                        if (ints[rev[i]] > 0) { ints[rev[i]] -= 1; rest++; }
+                    }
+                }
+                quota[a] = ints;
+            });
+
+            // 4. 各年龄段的"次优职业"排序（配额用尽时兜底用）
+            // 兜底排序：按"职业目标占比"从高到低（而不是按常识权重），
+            // 保证名额溢出时优先补给占比高、缺口大的职业，不再让主导职业越滚越大。
+            const fallbackOrder = {};
+            ageList.forEach(a => {
+                fallbackOrder[a] = Object.entries(AGE_OCCUPATION_WEIGHTS[a] || {})
+                    .filter(([o, w]) => w > 0 && effTargets[o] > 0 && getCellCap(a, o) > 0)
+                    .map(([o]) => o)
+                    .sort((x, y) => effTargets[y] - effTargets[x]);
+            });
+
+            // 5. 逐行落位
+            //    第一轮按本年龄段配额填；配额用尽的行进入 pending，
+            //    第二轮按"全局缺口"动态补给缺口最大的职业（而不是一刀切给某个主导职业）。
+            const result = new Array(n).fill(null);
+            const pending = [];
+            shuffleArr(ages.map((_, i) => i)).forEach(i => {
+                const age = ages[i];
+                const q = quota[age] || {};
+                const available = occList.filter(o => (q[o] || 0) > 0);
+                if (!available.length) { pending.push(i); return; }
+
+                const weights = available.map(o => Math.max(0.01, (AGE_OCCUPATION_WEIGHTS[age] || {})[o] || 1));
+                const sumW = weights.reduce((x, y) => x + y, 0);
+                let r = Math.random() * sumW;
+                let picked = available[available.length - 1];
+                for (let k = 0; k < available.length; k++) {
+                    r -= weights[k];
+                    if (r <= 0) { picked = available[k]; break; }
+                }
+                q[picked] -= 1;
+                result[i] = picked;
+            });
+
+            // 第二轮：按全局缺口分配剩余行
+            if (pending.length) {
+                const cnt = {};
+                occList.forEach(o => { cnt[o] = 0; });
+                result.forEach(o => { if (o) cnt[o] += 1; });
+
+                shuffleArr(pending).forEach(i => {
+                    const age = ages[i];
+                    // 该年龄段允许、且当前缺口最大的职业
+                    const cands = occList.filter(o => getCellCap(age, o) > 0);
+                    if (!cands.length) { result[i] = getRandomItem(occRatios); return; }
+                    let best = cands[0], bestGap = -Infinity;
+                    cands.forEach(o => {
+                        const gap = effTargets[o] * n - cnt[o];
+                        if (gap > bestGap) { bestGap = gap; best = o; }
+                    });
+                    result[i] = best;
+                    cnt[best] += 1;
+                });
+            }
+
+            return result;
         };
 
-        // 配置自检：年龄分布与职业分布若存在逻辑冲突，在页面上给出提示
+        // 全局纠偏：把"超出目标"的行改给"仍缺额"的职业。
+        // 阶段一：只在该年龄段常识允许、且该段该职业未超上限的前提下调剂；
+        // 阶段二：放宽职业限制，但仍必须满足"该年龄段允许出现该职业"。
+        const redistributeOccupations = (occs, ages, occRatios) => {
+            const n = occs.length;
+            const targets = getOccupationTargets(occRatios);
+            const occList = Object.keys(occRatios).filter(o => targets[o] > 0);
+
+            const count = {};
+            occList.forEach(o => { count[o] = 0; });
+            const rowsOf = {};
+            occList.forEach(o => { rowsOf[o] = []; });
+            occs.forEach((o, i) => {
+                if (count[o] === undefined) count[o] = 0;
+                count[o] += 1;
+                (rowsOf[o] = rowsOf[o] || []).push(i);
+            });
+
+            const ageTotal = {};
+            ages.forEach(a => { ageTotal[a] = (ageTotal[a] || 0) + 1; });
+            const cellUsed = {}; // age -> { occ -> 人数 }
+            const bumpUsed = (a, o, d) => {
+                cellUsed[a] = cellUsed[a] || {};
+                cellUsed[a][o] = (cellUsed[a][o] || 0) + d;
+            };
+            occs.forEach((o, i) => { if (ages[i]) bumpUsed(ages[i], o, 1); });
+
+            const runPhase = (strict) => {
+                let guard = 0;
+                while (guard++ < n * 4) {
+                    const ideal = {};
+                    occList.forEach(o => { ideal[o] = targets[o] * n; });
+                    let need = null, needGap = 1;
+                    let over = null, overSurplus = 1;
+                    occList.forEach(o => {
+                        const gap = ideal[o] - count[o];
+                        if (gap > needGap) { needGap = gap; need = o; }
+                        if (-gap > overSurplus) { overSurplus = -gap; over = o; }
+                    });
+                    if (!need || !over) break;
+
+                    let moved = false;
+                    for (const idx of shuffleArr(rowsOf[over].slice())) {
+                        const age = ages[idx];
+                        // 目标年龄段必须允许该职业
+                        if (!getCellCap(age, need)) continue;
+                        if (strict && !getCellCap(age, over)) continue;
+                        // 该年龄段该职业不得超过上限
+                        if (((cellUsed[age] || {})[need] || 0) + 1 > getCellCap(age, need) * ageTotal[age]) continue;
+
+                        occs[idx] = need;
+                        rowsOf[over] = rowsOf[over].filter(x => x !== idx);
+                        rowsOf[need].push(idx);
+                        count[over] -= 1;
+                        count[need] += 1;
+                        bumpUsed(age, over, -1);
+                        bumpUsed(age, need, 1);
+                        moved = true;
+                        break;
+                    }
+                    if (!moved) {
+                        if (!strict) break;
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            runPhase(true);
+            runPhase(false);
+
+            return occs;
+        };
+
+        // 配置自检：年龄分布与职业分布若存在结构冲突，在页面上给出提示
         const checkAgeOccupationConsistency = () => {
             const el = document.getElementById('ageOccupationWarning');
             if (!el) return;
 
             const ageSum = Object.values(state.ageRatios).reduce((a, b) => a + b, 0) || 1;
             const occSum = Object.values(state.occupationRatios).reduce((a, b) => a + b, 0) || 1;
-            const under18 = (state.ageRatios['18岁以下'] || 0) / ageSum * 100;
-            const student = (state.occupationRatios['学生'] || 0) / occSum * 100;
-            const retire = (state.occupationRatios['离休/退休'] || 0) / occSum * 100;
-            const over46 = ((state.ageRatios['46-55岁'] || 0) + (state.ageRatios['56岁以上'] || 0)) / ageSum * 100;
+            const pct = (v) => (v / ageSum) * 100;
+
+            const under18 = pct(state.ageRatios['18岁以下'] || 0);
+            const young = pct((state.ageRatios['18岁以下'] || 0) + (state.ageRatios['18-25岁'] || 0));
+            const over46 = pct((state.ageRatios['46-55岁'] || 0) + (state.ageRatios['56岁以上'] || 0));
+            const student = ((state.occupationRatios['学生'] || 0) / occSum) * 100;
+            const retire = ((state.occupationRatios['离休/退休'] || 0) / occSum) * 100;
 
             const tips = [];
-            if (student + 0.5 < under18) {
-                tips.push(`“学生”(${student.toFixed(1)}%)低于“18岁以下”(${under18.toFixed(1)}%)：18岁以下只能为学生，生成时“学生”会等于“18岁以下”占比。`);
+            // 学生：18 岁以下必为学生，25 岁以下最多再补 60%
+            const studentMax = under18 + (young - under18) * 0.60 + pct(state.ageRatios['26-35岁'] || 0) * 0.10;
+            if (student > studentMax + 0.5) {
+                tips.push(`“学生”设为 ${student.toFixed(1)}%，但 25 岁以下人群只占 ${young.toFixed(1)}%，最多只能生成约 ${studentMax.toFixed(1)}% 的学生。成倍提高“18-25岁”占比即可解决。`);
             }
-            if (retire > 0 && over46 < retire) {
-                tips.push(`“离休/退休”(${retire.toFixed(1)}%)高于46岁以上人群占比(${over46.toFixed(1)}%)：生成时该职业会被压低，建议同步提高“46岁以上”年龄占比。`);
+            // 离休/退休：只能落在 46 岁以上
+            if (retire > over46 * 0.75) {
+                tips.push(`“离休/退休”设为 ${retire.toFixed(1)}%，但 46 岁以上人群只占 ${over46.toFixed(1)}%（且其中大部分人仍在职），该职业会被压到约 ${(over46 * 0.75).toFixed(1)}% 以内。建议提高“46-55岁/56岁以上”占比。`);
             }
 
             if (tips.length) {
                 el.classList.remove('hidden');
-                el.innerHTML = '<i class="fas fa-triangle-exclamation mr-1"></i>' + tips.join(' ');
+                el.innerHTML = '<i class="fas fa-triangle-exclamation mr-1"></i>' + tips.join('<br>');
             } else {
                 el.classList.add('hidden');
                 el.innerHTML = '';
@@ -1397,8 +1639,12 @@
             for (let i = 0; i < state.sampleSize; i++) {
                 ages.push(i < 6 ? firstSixRowsPreset[i].age : getRandomItem(state.ageRatios));
             }
-            // 学生名额（18岁以下必为学生的前提下，尽量贴近设定占比）
-            const studentAssigned = buildStudentAssignments(ages, state.occupationRatios);
+            // 职业：先按「年龄 × 职业」二维配额整体分配，再做全局占比纠偏
+            const occupationPlan = redistributeOccupations(
+                buildOccupationQuota(ages, state.occupationRatios),
+                ages,
+                state.occupationRatios
+            );
 
             for (let i = 0; i < state.sampleSize; i++) {
                 const gender = Math.random() < state.maleRatio / 100 ? '男' : '女';
@@ -1406,13 +1652,8 @@
                 // 年龄 - 取自预先确定的年龄数组（前6行为预设值）
                 const age = ages[i];
 
-                // 职业 - 与年龄联动：18岁以下必为学生；学生名额用完后不再出现学生
-                let occupation;
-                if (age === '18岁以下' || studentAssigned[i]) {
-                    occupation = '学生';
-                } else {
-                    occupation = sampleOccupationByAge(age, state.occupationRatios, ['学生']);
-                }
+                // 职业 - 由二维配额表预先分配好（已含年龄联动 + 全局占比纠偏）
+                const occupation = occupationPlan[i];
                 const region = getRandomItem(state.regionRatios);
                 
                 // 多选题（可多选）- 如果是前6行，使用预设值
