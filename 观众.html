@@ -297,12 +297,13 @@
                         </div>
                         <div class="mt-1 text-xs text-gray-500 leading-relaxed">
                             <i class="fas fa-link text-teal-500 mr-1"></i>
-                            已与年龄分布联动：职业按「年龄 × 职业」二维配额分配，各职业最终占比严格贴合此处设定；
+                            已与年龄分布联动：职业按「年龄 × 职业」二维配额分配，各职业最终占比贴合此处设定；
                             学生主要集中在 25 岁以下，离休/退休主要集中在 46 岁以上，农林牧渔偏中老年，企业管理者偏 36 岁以上。
                         </div>
                         <div class="mt-1 text-xs text-emerald-600 leading-relaxed">
                             <i class="fas fa-circle-check mr-1"></i>
-                            当前算法：先按设定占比 × 年龄段人数算出每个格子的名额，再按年龄常识微调，因此导出结果与设定值误差通常在 ±0.3% 以内，且不会出现"18 岁以下非学生""20 岁已退休"等不合逻辑的组合。
+                            当前算法：先按设定占比 × 年龄段人数算出每个格子的名额，再按年龄常识微调，最后对每个职业的人数做一次符合统计规律的随机波动（样本越大越贴近设定值）。
+                            硬性规则：<b>18 岁以下一律为学生</b>；25 岁以下不会出现离休/退休；36 岁以上不会出现学生。
                         </div>
                         <div id="ageOccupationWarning" class="mt-1 text-xs text-amber-600 hidden"></div>
                     </div>
@@ -1242,9 +1243,9 @@
         // 权重基准约为 10×√(职业全局占比)，再按年龄段做常识修正（如18-25岁学生权重更高）
         const AGE_OCCUPATION_WEIGHTS = {
             // 未满18岁：在校学生（含中职、高中），不可能有正式职业，更不可能离休/退休
-            // 未满18岁：绝大多数为在校学生；少量中职实习/技校学徒/辍学务工，标为相应职业
+            // 未满18岁：一律为在校学生（硬约束，不参与任何调剂）
             '18岁以下': {
-                '学生': 100, '工人劳动者': 5, '服务业人员': 4, '个体经营者': 3
+                '学生': 100
             },
             // 18-25岁：以学生为主，其余为初入职场的基层岗位；不可能离休/退休
             '18-25岁': {
@@ -1333,7 +1334,7 @@
 
         // 学生名额上限：18 岁以下以学生为主（但非 100%，留出少量中职实习/辍学等），
         // 18-25 岁最多 75%，26-35 岁最多 10%，再往上一律为 0
-        const STUDENT_CAP = { '18岁以下': 0.93, '18-25岁': 0.60, '26-35岁': 0.10 };
+        const STUDENT_CAP = { '18岁以下': 1.0, '18-25岁': 0.60, '26-35岁': 0.10 };
 
         // 某年龄段里某职业最多能占多少比例（防止把"学生"塞给 60 岁、把"离休/退休"塞给 20 岁）
         const getCellCap = (age, occ) => {
@@ -1505,6 +1506,8 @@
 
                 shuffleArr(pending).forEach(i => {
                     const age = ages[i];
+                    // 18 岁以下一律学生
+                    if (age === '18岁以下') { result[i] = '学生'; cnt['学生'] += 1; return; }
                     // 该年龄段允许、且当前缺口最大的职业
                     const cands = occList.filter(o => getCellCap(age, o) > 0);
                     if (!cands.length) { result[i] = getRandomItem(occRatios); return; }
@@ -1565,6 +1568,8 @@
                     let moved = false;
                     for (const idx of shuffleArr(rowsOf[over].slice())) {
                         const age = ages[idx];
+                        // 18 岁以下只能为学生，不参与调剂
+                        if (age === '18岁以下') continue;
                         // 目标年龄段必须允许该职业
                         if (!getCellCap(age, need)) continue;
                         if (strict && !getCellCap(age, over)) continue;
@@ -1592,6 +1597,9 @@
             runPhase(true);
             runPhase(false);
 
+            // 硬约束兜底：18 岁以下一律为学生
+            ages.forEach((a, i) => { if (a === '18岁以下') occs[i] = '学生'; });
+
             return occs;
         };
 
@@ -1603,12 +1611,18 @@
             const targets = getOccupationTargets(occRatios);
             const occList = Object.keys(occRatios).filter(o => targets[o] > 0);
 
-            // 当前各职业人数与摆位
+            // 18 岁以下固定为学生，这部分不参与随机波动；
+            // 只有"18 岁及以上"的行可以在职业之间挪动，学生的可波动区间也据此计算。
+            const under18Count = ages.filter(a => a === '18岁以下').length;
+            const flexible = n - under18Count;
+
+            // 当前各职业人数与摆位（只统计可动摇的行）
             const count = {};
             const rowsOf = {};
             occList.forEach(o => { count[o] = 0; rowsOf[o] = []; });
             occs.forEach((o, i) => {
                 if (count[o] === undefined) { count[o] = 0; rowsOf[o] = []; }
+                if (ages[i] === '18岁以下') return;
                 count[o] += 1;
                 rowsOf[o].push(i);
             });
@@ -1618,22 +1632,27 @@
             occList.forEach(o => {
                 const p = targets[o];
                 const mean = p * n;
-                const sd = Math.sqrt(Math.max(1e-6, n * p * (1 - p))) * 0.6; // 二项分布标准差（0.6 为阻尼，避免抖过头）
+                // 学生的波动只作用于"18 岁及以上"那部分，避免被 18 岁以下的固定人数拉偏
+                const movableMean = o === '学生' ? Math.max(0, mean - under18Count) : mean;
+                const base = o === '学生' ? flexible : n;
+                const sd = Math.sqrt(Math.max(1e-6, base * p * (1 - p))) * 0.6; // 二项分布标准差（0.6 为阻尼）
                 // 正态近似（Box-Muller），限幅 ±2 sd，避免极端漂移
                 const u1 = Math.random() || 1e-9, u2 = Math.random();
                 const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
                 const jitter = Math.max(-2, Math.min(2, z)) * sd;
-                want[o] = Math.max(0, Math.round(mean + jitter));
+                want[o] = Math.max(0, Math.round(movableMean + jitter));
             });
+            // 学生：want 只算了可动摇部分，这里换回全局口径，并保证不少于 18 岁以下人数
+            want['学生'] = Math.max(under18Count, want['学生'] + under18Count);
 
             // 多退少补：把"超出目标"的行挪给"仍缺额"的职业（保持年龄合法性）
-            const runPass = (strict) => {
+            const runPass = () => {
                 let guard = 0;
                 while (guard++ < n * 3) {
                     let over = null, overSurplus = 0;
                     let need = null, needGap = 0;
                     occList.forEach(o => {
-                        const d = count[o] - want[o];
+                        const d = count[o] + (o === '学生' ? under18Count : 0) - want[o];
                         if (d > overSurplus) { overSurplus = d; over = o; }
                         if (-d > needGap) { needGap = -d; need = o; }
                     });
@@ -1641,8 +1660,9 @@
 
                     let moved = false;
                     for (const idx of shuffleArr(rowsOf[over].slice())) {
-                        if (strict && !getCellCap(ages[idx], need)) continue;
-                        if (!strict && !getCellCap(ages[idx], need)) continue;
+                        const age = ages[idx];
+                        if (age === '18岁以下') continue;          // 硬约束：18 岁以下必为学生
+                        if (!getCellCap(age, need)) continue;      // 目标职业须在该年龄段允许
                         occs[idx] = need;
                         rowsOf[over] = rowsOf[over].filter(x => x !== idx);
                         rowsOf[need].push(idx);
@@ -1654,7 +1674,7 @@
                     if (!moved) break;
                 }
             };
-            runPass(true);
+            runPass();
 
             return occs;
         };
