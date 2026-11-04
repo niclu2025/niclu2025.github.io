@@ -1595,6 +1595,70 @@
             return occs;
         };
 
+        // 人数随机化：配额算法会让每个职业的人数恰好等于"目标占比 × 样本量"的整数，
+        // 导出后每个职业的百分比都整齐停在同一档（如 8%、13%、15%），一眼就是生成的。
+        // 这里按目标人数做一次二项式级波动：样本量越小，波动越大，符合真实抽样的统计规律。
+        const jitterOccupationCounts = (occs, ages, occRatios) => {
+            const n = occs.length;
+            const targets = getOccupationTargets(occRatios);
+            const occList = Object.keys(occRatios).filter(o => targets[o] > 0);
+
+            // 当前各职业人数与摆位
+            const count = {};
+            const rowsOf = {};
+            occList.forEach(o => { count[o] = 0; rowsOf[o] = []; });
+            occs.forEach((o, i) => {
+                if (count[o] === undefined) { count[o] = 0; rowsOf[o] = []; }
+                count[o] += 1;
+                rowsOf[o].push(i);
+            });
+
+            // 目标人数 + 随机波动
+            const want = {};
+            occList.forEach(o => {
+                const p = targets[o];
+                const mean = p * n;
+                const sd = Math.sqrt(Math.max(1e-6, n * p * (1 - p))) * 0.6; // 二项分布标准差（0.6 为阻尼，避免抖过头）
+                // 正态近似（Box-Muller），限幅 ±2 sd，避免极端漂移
+                const u1 = Math.random() || 1e-9, u2 = Math.random();
+                const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+                const jitter = Math.max(-2, Math.min(2, z)) * sd;
+                want[o] = Math.max(0, Math.round(mean + jitter));
+            });
+
+            // 多退少补：把"超出目标"的行挪给"仍缺额"的职业（保持年龄合法性）
+            const runPass = (strict) => {
+                let guard = 0;
+                while (guard++ < n * 3) {
+                    let over = null, overSurplus = 0;
+                    let need = null, needGap = 0;
+                    occList.forEach(o => {
+                        const d = count[o] - want[o];
+                        if (d > overSurplus) { overSurplus = d; over = o; }
+                        if (-d > needGap) { needGap = -d; need = o; }
+                    });
+                    if (!over || !need) break;
+
+                    let moved = false;
+                    for (const idx of shuffleArr(rowsOf[over].slice())) {
+                        if (strict && !getCellCap(ages[idx], need)) continue;
+                        if (!strict && !getCellCap(ages[idx], need)) continue;
+                        occs[idx] = need;
+                        rowsOf[over] = rowsOf[over].filter(x => x !== idx);
+                        rowsOf[need].push(idx);
+                        count[over] -= 1;
+                        count[need] += 1;
+                        moved = true;
+                        break;
+                    }
+                    if (!moved) break;
+                }
+            };
+            runPass(true);
+
+            return occs;
+        };
+
         // 配置自检：年龄分布与职业分布若存在结构冲突，在页面上给出提示
         const checkAgeOccupationConsistency = () => {
             const el = document.getElementById('ageOccupationWarning');
@@ -1639,9 +1703,14 @@
             for (let i = 0; i < state.sampleSize; i++) {
                 ages.push(i < 6 ? firstSixRowsPreset[i].age : getRandomItem(state.ageRatios));
             }
-            // 职业：先按「年龄 × 职业」二维配额整体分配，再做全局占比纠偏
-            const occupationPlan = redistributeOccupations(
-                buildOccupationQuota(ages, state.occupationRatios),
+            // 职业：先按「年龄 × 职业」二维配额整体分配，再做全局占比纠偏，
+            // 最后按目标占比对每个职业的人数做随机波动（否则每个职业人数会是精确的整数倍，百分比过于整齐）
+            const occupationPlan = jitterOccupationCounts(
+                redistributeOccupations(
+                    buildOccupationQuota(ages, state.occupationRatios),
+                    ages,
+                    state.occupationRatios
+                ),
                 ages,
                 state.occupationRatios
             );
