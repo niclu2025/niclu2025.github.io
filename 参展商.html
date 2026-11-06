@@ -310,23 +310,36 @@
                             
                             <!-- 参展人员数量范围占比 -->
                             <div class="border border-gray-100 rounded-lg p-4 mb-4">
-                                <label class="block text-sm font-medium text-gray-700 mb-3">参展人员数量范围占比</label>
+                                <div class="flex justify-between items-center mb-3">
+                                    <label class="block text-sm font-medium text-gray-700">参展人员数量范围占比</label>
+                                    <button id="resetStaffRanges" class="text-xs text-primary hover:text-primary/80 transition-colors">
+                                        <i class="fa fa-refresh mr-1"></i> 重置
+                                    </button>
+                                </div>
                                 <div class="space-y-3">
                                     <div>
                                         <div class="flex justify-between text-xs mb-1">
-                                            <span>10人以下</span>
-                                            <span id="staffRange1Value" class="font-medium text-primary">90%</span>
+                                            <span>5人以下</span>
+                                            <span id="staffRange1Value" class="font-medium text-primary">60%</span>
                                         </div>
-                                        <input type="range" id="staffRange1" min="0" max="100" value="90" 
+                                        <input type="range" id="staffRange1" min="0" max="100" value="60" 
                                             class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateStaffRangePercentages('staffRange1')">
                                     </div>
                                     <div>
                                         <div class="flex justify-between text-xs mb-1">
-                                            <span>10人以上</span>
-                                            <span id="staffRange2Value" class="font-medium text-primary">10%</span>
+                                            <span>5-10人</span>
+                                            <span id="staffRange2Value" class="font-medium text-primary">30%</span>
                                         </div>
-                                        <input type="range" id="staffRange2" min="0" max="100" value="10" 
+                                        <input type="range" id="staffRange2" min="0" max="100" value="30" 
                                             class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateStaffRangePercentages('staffRange2')">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>10人以上</span>
+                                            <span id="staffRange3Value" class="font-medium text-primary">10%</span>
+                                        </div>
+                                        <input type="range" id="staffRange3" min="0" max="100" value="10" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" oninput="updateStaffRangePercentages('staffRange3')">
                                     </div>
                                     <div class="pt-2 text-xs text-center text-gray-500">
                                         总占比: <span id="staffRangeTotal" class="font-medium">100%</span>
@@ -1249,6 +1262,14 @@
                 updateAreaRatios();
                 updateAreaRangeLabels();
             });
+
+            // 绑定重置人员数量范围占比按钮事件
+            const resetStaffBtn = document.getElementById('resetStaffRanges');
+            if (resetStaffBtn) {
+                resetStaffBtn.addEventListener('click', function() {
+                    resetStaffRanges();
+                });
+            }
             
             // 更新面积区间标签
             function updateAreaRangeLabels() {
@@ -1267,9 +1288,9 @@
                 
                 // 更新面积区间占比规则
                 areaRatioRules = [
-                    { min: minArea, max: quarterPoint, targetRatio: parseInt(document.getElementById('areaRatio1').value) / 100 },  // 使用用户设置的小面积占比
-                    { min: quarterPoint+1, max: twoThirdsPoint, targetRatio: parseInt(document.getElementById('areaRatio2').value) / 100 }, // 使用用户设置的中面积占比
-                    { min: twoThirdsPoint+1, max: maxArea, targetRatio: parseInt(document.getElementById('areaRatio3').value) / 100 }  // 使用用户设置的大面积占比
+                    { min: minArea, max: quarterPoint, targetRatio: parseInt(document.getElementById('areaRatio1').value) / 100, level: 0 },  // 使用用户设置的小面积占比
+                    { min: quarterPoint+1, max: twoThirdsPoint, targetRatio: parseInt(document.getElementById('areaRatio2').value) / 100, level: 1 }, // 使用用户设置的中面积占比
+                    { min: twoThirdsPoint+1, max: maxArea, targetRatio: parseInt(document.getElementById('areaRatio3').value) / 100, level: 2 }  // 使用用户设置的大面积占比
                 ];
             }
             
@@ -1941,6 +1962,18 @@ function generateAreaSamples() {
 
     // 5. 生成符合占比+9的倍数的面积样本
     const areaSamples = [];
+    // 与 areaSamples 一一对应：记录每个样本所属的面积档位
+    // 0=小面积区间，1=中面积区间，2=大面积区间，3=9㎡基础区间
+    const areaLevels = [];
+
+    // 按面积反查档位（用于兜底补样）
+    function areaLevelOf(a) {
+        for (let i = 0; i < areaRatioRules.length; i++) {
+            const r = areaRatioRules[i];
+            if (a >= r.min && a <= r.max && r.level !== undefined) return r.level;
+        }
+        return 3;
+    }
     validAreaRules.forEach((rule, index) => {
         const needCount = areaCountList[index];
         if (needCount <= 0) return; // 跳过无需生成的区间
@@ -1953,12 +1986,16 @@ function generateAreaSamples() {
         // 若区间内无有效9倍数，跳过
         if (minMultiple > maxMultiple) return;
         
+        // 记录该区间对应的面积档位（0=小面积 1=中面积 2=大面积 3=9㎡基础区间）
+        const areaLevel = (rule.level === undefined) ? 3 : rule.level;
+        
         // 生成对应数量的面积样本
         let currentCount = 0;
         while (currentCount < needCount) {
             // 对于9㎡区间，直接添加9
             if (rule.actualMin === 9 && rule.actualMax === 9) {
                 areaSamples.push(9);
+                areaLevels.push(areaLevel);
                 currentCount++;
                 continue;
             }
@@ -1974,6 +2011,7 @@ function generateAreaSamples() {
             // 验证：确保生成的面积在用户设定的[minArea, maxArea]范围内
             if (randomMultiple >= minArea && randomMultiple <= maxArea) {
                 areaSamples.push(randomMultiple);
+                areaLevels.push(areaLevel);
                 currentCount++;
             }
         }
@@ -1990,6 +2028,7 @@ function generateAreaSamples() {
             // 确保生成的面积是9的倍数，即使超出用户设置的范围
             const closestMultiple = Math.ceil(minArea / 9) * 9;
             areaSamples.push(closestMultiple);
+            areaLevels.push(areaLevelOf(closestMultiple));
         } else {
             // 使用幂次分布增加随机性和差异性
             const exponent = 2.5; // 与上面保持一致
@@ -1999,6 +2038,7 @@ function generateAreaSamples() {
             const randomMultiple = minPossible + randomStep * 9;
             
             areaSamples.push(randomMultiple);
+            areaLevels.push(areaLevelOf(randomMultiple));
         }
     }
     
@@ -2007,10 +2047,118 @@ function generateAreaSamples() {
         // 随机替换一个元素为9
         const randomIndex = Math.floor(Math.random() * areaSamples.length);
         areaSamples[randomIndex] = 9;
+        areaLevels[randomIndex] = 3;
     }
 
+    // 对外输出：样本数组 + 档位数组（供支出区间反推使用）
+    generateAreaSamples.lastLevels = areaLevels.slice();
     return areaSamples;
 }
+
+        // -------------------------- 区间双向抽样 --------------------------
+        // 目的：让"租赁 / 搭建 / 物流 / 广告"四个支出区间的占比，
+        //       随"面积占比设置"变化而联动（面积档位决定支出基数）。
+        //  ① 正相关：小面积展位支出基数小 → 更可能落在低支出区间；
+        //     大面积展位支出基数大 → 更可能落在高支出区间；
+        //  ② 条件下构成不变：在任一支出区间内部，小/中/大面积档位的构成，
+        //     仍然严格保持"面积占比设置"的比例。即
+        //         P(档位|支出区间) = P(档位) = 面积占比设置
+        //     于是 P(支出区间|档位) 完全由公式确定 —— 这就是"区间比例受面积占比影响"。
+
+        // 面积档位 → 各支出区间的相对倾向权重（0=最低支出区间，3=最高）
+        // 行为：小面积 / 中面积 / 大面积 / 9㎡基础区间
+        // 说明：权重只决定"档位内部往哪个区间倾斜"，不决定最终的区间总量
+        // 整体略作软化（约 90% 概率循档位、10% 随机游走），避免出现 100% / 0% 的极端区间
+        const AREA_LEVEL_SLOT_WEIGHTS = {
+            rentCost:      [[0.88, 0.10, 0.015, 0.005], [0.13, 0.70, 0.155, 0.015], [0.01, 0.14, 0.83, 0.02], [0.90, 0.06, 0.03, 0.01]],
+            setupCost:     [[0.89, 0.095, 0.012, 0.003], [0.14, 0.70, 0.145, 0.015], [0.012, 0.13, 0.84, 0.018], [0.90, 0.06, 0.03, 0.01]],
+            logisticsCost: [[0.86, 0.12, 0.017, 0.003], [0.15, 0.69, 0.145, 0.015], [0.017, 0.16, 0.805, 0.018], [0.90, 0.06, 0.03, 0.01]],
+            adCost:        [[0.84, 0.14, 0.017, 0.003], [0.16, 0.68, 0.145, 0.015], [0.02, 0.18, 0.782, 0.018], [0.90, 0.06, 0.03, 0.01]]
+        };
+
+        // 构造某个支出字段的抽样表：
+        //   slotProb[s]        = 该支出区间占总数的比例（由面积占比设置加权后得出）
+        //   table[s][level]    = 该支出区间内各面积档位的构成比例（= P(档位)，即面积占比）
+        //   inv[level][s]      = 累积分布，用于"给定面积档位 → 抽哪个支出区间"
+        function buildCostPools(key) {
+            const values = allData.map(function (d) { return Math.round(d[key]); });
+            if (!values.length) return;
+
+            const analysis = buildRangeAnalysis({ key: key, format: 'currency' }, values);
+
+            // 各面积档位的实际占比（即用户在"面积占比设置"里拖出来的比例）
+            const levelShare = [0, 0, 0, 0];
+            let levelTotal = 0;
+            seatLevels.forEach(function (lv) {
+                if (lv >= 0 && lv < 4) { levelShare[lv] += 1; levelTotal += 1; }
+            });
+            for (let lv = 0; lv < 4; lv++) {
+                levelShare[lv] = levelTotal ? levelShare[lv] / levelTotal : 0;
+            }
+
+            const weights = AREA_LEVEL_SLOT_WEIGHTS[key] || AREA_LEVEL_SLOT_WEIGHTS.rentCost;
+
+            // ① 某档位在各区间上的分布（按权重归一化）
+            const slotGivenLevel = [0, 1, 2, 3].map(function (lv) {
+                const row = weights[lv].slice();
+                const sum = row.reduce(function (a, b) { return a + b; }, 0) || 1;
+                return row.map(function (w) { return w / sum; });
+            });
+
+            // ② 各支出区间的总量占比 = Σ 档位占比 × 档位在各区间的分布
+            //    —— 面积占比一变，这里立即跟着变
+            const slotProb = [0, 0, 0, 0];
+            for (let s = 0; s < 4; s++) {
+                let p = 0;
+                for (let lv = 0; lv < 4; lv++) p += levelShare[lv] * slotGivenLevel[lv][s];
+                slotProb[s] = p;
+            }
+
+            // ③ 各区间内的档位构成（固定为面积占比，保证"区间内结构"不被扭曲）
+            const table = [0, 1, 2, 3].map(function () { return levelShare.slice(); });
+
+            // ④ 给定档位 → 区间 的累积分布
+            const inv = [0, 1, 2, 3].map(function (lv) {
+                let acc = 0;
+                return slotGivenLevel[lv].map(function (p) { return (acc += p); });
+            });
+
+            // ⑤ 候选值池：各区间内取一组逼近区间中值的候选值
+            const pools = analysis.ranges.map(function (r) {
+                const mid = Math.round((r.start + r.end) / 2);
+                const spread = Math.max(1, Math.round((r.end - r.start) / 6));
+                const arr = [];
+                for (let k = -3; k <= 3; k++) arr.push(Math.max(0, mid + k * spread));
+                return arr.sort(function (a, b) { return a - b; });
+            });
+
+            costPools[key] = {
+                slotProb: slotProb,
+                table: table,
+                inv: inv,
+                pools: pools,
+                ranges: analysis.ranges
+            };
+        }
+
+        // 给定面积档位，抽取该展位的支出值：
+        // 先按"面积占比 → 支出区间"的条件分布定区间，再在区间内均匀取候选值
+        function sampleByLevel(key, level, fallback) {
+            const data = costPools[key];
+            if (!data) return fallback;
+            const lv = (level >= 0 && level < 4) ? level : 3;
+            const cum = data.inv[lv];
+            if (!cum) return fallback;
+            const r = Math.random();
+            let slot = 3;
+            for (let s = 0; s < 4; s++) {
+                if (r <= cum[s]) { slot = s; break; }
+            }
+            const pool = data.pools[slot];
+            if (!pool || !pool.length) return fallback;
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+        // -------------------------- 区间双向抽样结束 --------------------------
 // -------------------------- 动态面积占比控制结束 --------------------------
                 // 清空现有数据
 allData = [];
@@ -2041,14 +2189,47 @@ if (customCategoriesInput && customCategoriesInput.value.trim()) {
 // 首先生成符合占比规则的面积样本数组
 const areaSamples = generateAreaSamples();
 
+// 记录每个展位的面积档位（0=小面积 1=中面积 2=大面积 3=9㎡基础区间）
+const seatLevels = [];
+if (generateAreaSamples.lastLevels && generateAreaSamples.lastLevels.length) {
+    for (let i = 0; i < exhibitorCount; i++) {
+        seatLevels.push(generateAreaSamples.lastLevels[i] === undefined ? 3 : generateAreaSamples.lastLevels[i]);
+    }
+}
+
+// 占位：后续按面积档位构造各支出字段的候选值池
+const costPools = {};
+
 for (let i = 0; i < exhibitorCount; i++) {
     // 使用预先生成的面积样本，确保按照设定的概率分布和允许重复
     const area = areaSamples[i] || 9; // 默认为9平米作为备用
     
-    // 获取参展人员数量范围占比设置
-    const staffRange1 = parseInt(document.getElementById('staffRange1').value) || 80; // 10人以下占比
-    const staffRange2 = parseInt(document.getElementById('staffRange2').value) || 20; // 10人以上占比
-    
+    // 获取参展人员数量范围占比设置（三档：5人以下 / 5-10人 / 10人以上）
+    const staffPctSmall = parseInt(document.getElementById('staffRange1').value) || 0;  // 5人以下占比
+    const staffPctMid = parseInt(document.getElementById('staffRange2').value) || 0;    // 5-10人占比
+    const staffPctLarge = parseInt(document.getElementById('staffRange3').value) || 0;  // 10人以上占比
+    const staffPctTotal = staffPctSmall + staffPctMid + staffPctLarge;
+
+    // 在给定闭区间 [lo, hi] 内随机取整数；区间无效时返回 null
+    function pickStaffIn(lo, hi) {
+        const a = Math.max(lo, minStaff);
+        const b = Math.min(hi, maxStaff);
+        if (a > b) return null;
+        return Math.floor(Math.random() * (b - a + 1)) + a;
+    }
+
+    // 按三档占比抽一个档位（每档的人数范围互不重叠：5人以下 / 5-10人 / 10人以上）
+    function pickStaffByRatio() {
+        if (staffPctTotal <= 0) {
+            // 占比未设置时，退化为在 [minStaff, maxStaff] 内均匀取值
+            return pickStaffIn(minStaff, maxStaff) || minStaff;
+        }
+        const r = Math.random() * staffPctTotal;
+        if (r < staffPctSmall) return pickStaffIn(1, 4) || pickStaffIn(minStaff, maxStaff) || minStaff;
+        if (r < staffPctSmall + staffPctMid) return pickStaffIn(5, 10) || pickStaffIn(minStaff, maxStaff) || minStaff;
+        return pickStaffIn(11, maxStaff) || pickStaffIn(minStaff, maxStaff) || minStaff;
+    }
+
     // 根据展位面积确定参展人员数量
     let staff;
     // 当面积为9平方米时，人员最大为3人（特殊情况）
@@ -2056,48 +2237,27 @@ for (let i = 0; i < exhibitorCount; i++) {
         const maxStaffForSmallArea = Math.min(3, maxStaff);
         const effectiveMinStaff = Math.min(minStaff, maxStaffForSmallArea);
         staff = Math.floor(Math.random() * (maxStaffForSmallArea - effectiveMinStaff + 1)) + effectiveMinStaff;
-    } 
-    // 135平米以下的展位面积，只能匹配10人以下的参展人员
+    }
+    // 小面积展位（180㎡以下）：按三档占比抽取，人数不超过10人
     else if (area < 180) {
-        // 10人以下范围
-        const effectiveMin = Math.min(minStaff, 9);
-        const effectiveMax = Math.min(maxStaff, 9);
-        if (effectiveMin > effectiveMax) {
-            // 如果范围无效，使用默认范围
-            staff = Math.floor(Math.random() * (maxStaff - minStaff + 1)) + minStaff;
+        const r = Math.random() * (staffPctTotal > 0 ? staffPctTotal : 100);
+        const smallShare = staffPctTotal > 0 ? staffPctSmall : 90;
+        if (r < smallShare) {
+            // 落在「5人以下」档
+            staff = pickStaffIn(1, 4) || pickStaffIn(minStaff, Math.min(maxStaff, 10)) || minStaff;
         } else {
-            staff = Math.floor(Math.random() * (effectiveMax - effectiveMin + 1)) + effectiveMin;
+            // 落在「5-10人」档（小面积展位不分配到10人以上）
+            staff = pickStaffIn(5, 10) || pickStaffIn(minStaff, Math.min(maxStaff, 10)) || minStaff;
         }
-    } 
-    // 135平米以上的展位面积，根据占比决定使用哪个范围
+    }
+    // 大面积展位（180㎡以上）：完全按三档占比分配
     else {
-        const rand = Math.random() * 100;
-        if (rand < staffRange1) {
-            // 10人以下范围
-            const effectiveMin = Math.min(minStaff, 9);
-            const effectiveMax = Math.min(maxStaff, 9);
-            if (effectiveMin > effectiveMax) {
-                // 如果范围无效，使用默认范围
-                staff = Math.floor(Math.random() * (maxStaff - minStaff + 1)) + minStaff;
-            } else {
-                staff = Math.floor(Math.random() * (effectiveMax - effectiveMin + 1)) + effectiveMin;
-            }
-        } else {
-            // 10人以上范围
-            const effectiveMin = Math.max(minStaff, 10);
-            const effectiveMax = maxStaff;
-            if (effectiveMin > effectiveMax) {
-                // 如果范围无效，使用默认范围
-                staff = Math.floor(Math.random() * (maxStaff - minStaff + 1)) + minStaff;
-            } else {
-                staff = Math.floor(Math.random() * (effectiveMax - effectiveMin + 1)) + effectiveMin;
-            }
-        }
+        staff = pickStaffByRatio();
     }
     
     // 修改：从范围中随机选择租赁单价
     const rentPrice = minRentPrice + Math.random() * (maxRentPrice - minRentPrice);
-    const rentCost = Math.round(area * rentPrice);
+    let rentCost = Math.round(area * rentPrice);
     
     // 修改：从范围中随机选择百分比
     const setupPercentage = minSetupPercentage + Math.random() * (maxSetupPercentage - minSetupPercentage);
@@ -2108,11 +2268,14 @@ for (let i = 0; i < exhibitorCount; i++) {
     const foodPerPerson = minFoodPerPerson + Math.random() * (maxFoodPerPerson - minFoodPerPerson);
     const travelPerPerson = minTravelPerPerson + Math.random() * (maxTravelPerPerson - minTravelPerPerson);
     
-    const setupCost = rentCost * setupPercentage;
-    const logisticsCost = rentCost * logisticsPercentage;
-    const adCost = rentCost * adPercentage;
+    let setupCost = rentCost * setupPercentage;
+    let logisticsCost = rentCost * logisticsPercentage;
+    let adCost = rentCost * adPercentage;
     const foodCost = staff * foodPerPerson;
     const travelCost = staff * travelPerPerson;
+
+    // 记录面积档位（供第二轮按档位重抽支出用）
+    seatLevels[i] = (seatLevels[i] === undefined) ? 3 : seatLevels[i];
                     
                     // 模拟销售额 - 与面积和随机因素相关
                     const dailySales = Math.floor(area * (50 + Math.random() * 200));
@@ -2206,13 +2369,38 @@ if (i < 4 && firstFourRowsPreset[i]) {
                     totalArea += area;
                     totalSales += dailySales;
                     totalVisitors += visitors;
-                    
-                    // 用于图表的统计数据
-                    totalRentCost += rentCost;
-                    totalSetupCost += setupCost;
-                    totalLogisticsCost += logisticsCost;
-                    totalAdCost += adCost;
                 }
+
+                // ---------------- 第二轮：按面积档位重抽四个支出字段 ----------------
+                // 目的：让租赁 / 搭建 / 物流 / 广告四个支出区间的占比，
+                //       随"面积占比设置"联动（小面积多的展会，低支出区间占比自然更高）
+                ['rentCost', 'setupCost', 'logisticsCost', 'adCost'].forEach(function (key) {
+                    buildCostPools(key);
+                });
+
+                let secondTotalCost = 0;
+                let secondRent = 0, secondSetup = 0, secondLogistics = 0, secondAd = 0;
+                allData.forEach(function (row, i) {
+                    const lv = seatLevels[i] === undefined ? 3 : seatLevels[i];
+                    row.rentCost = sampleByLevel('rentCost', lv, row.rentCost);
+                    row.setupCost = sampleByLevel('setupCost', lv, row.setupCost);
+                    row.logisticsCost = sampleByLevel('logisticsCost', lv, row.logisticsCost);
+                    row.adCost = sampleByLevel('adCost', lv, row.adCost);
+
+                    secondRent += row.rentCost;
+                    secondSetup += row.setupCost;
+                    secondLogistics += row.logisticsCost;
+                    secondAd += row.adCost;
+                    secondTotalCost += row.rentCost + row.setupCost + row.logisticsCost + row.adCost
+                        + row.foodCost + row.travelCost;
+                });
+
+                // 用重抽后的金额刷新汇总指标，保证概览、图表与区间分析三处一致
+                totalCost = secondTotalCost;
+                totalRentCost = secondRent;
+                totalSetupCost = secondSetup;
+                totalLogisticsCost = secondLogistics;
+                totalAdCost = secondAd;
 
                 // 更新概览数据
                 document.getElementById('totalCost').textContent = Math.round(totalCost).toLocaleString();
@@ -3012,38 +3200,67 @@ function updateSuccessRatePercentages() {
     document.getElementById('successRateTotal').className = total === 100 ? 'font-medium' : 'font-medium text-red-500';
 }
 
-// 更新参展人员数量范围占比的函数
+// 更新参展人员数量范围占比的函数（三档：5人以下 / 5-10人 / 10人以上）
 function updateStaffRangePercentages(senderId) {
-    const range1Input = document.getElementById('staffRange1');
-    const range2Input = document.getElementById('staffRange2');
-    
-    let range1 = parseInt(range1Input.value);
-    let range2 = parseInt(range2Input.value);
-    
-    // 如果是从滑块触发的更新，实现联动调节
+    const ids = ['staffRange1', 'staffRange2', 'staffRange3'];
+    const base = [60, 30, 10]; // 重置用的默认值
+    const inputs = ids.map(function (id) { return document.getElementById(id); });
+    let values = inputs.map(function (el) { return parseInt(el.value) || 0; });
+
+    // 如果是从滑块触发的更新，自动把剩余占比按原比例分给另外两档
     if (senderId) {
-        if (senderId === 'staffRange1') {
-            // 限制范围1在0-100之间
-            range1 = Math.max(0, Math.min(100, range1));
-            // 自动调整范围2
-            range2 = 100 - range1;
-            range2Input.value = range2;
-        } else if (senderId === 'staffRange2') {
-            // 限制范围2在0-100之间
-            range2 = Math.max(0, Math.min(100, range2));
-            // 自动调整范围1
-            range1 = 100 - range2;
-            range1Input.value = range1;
+        const idx = ids.indexOf(senderId);
+        if (idx >= 0) {
+            values[idx] = Math.max(0, Math.min(100, values[idx]));
+            const rest = 100 - values[idx];
+            const others = [0, 1, 2].filter(function (i) { return i !== idx; });
+            const sumOthers = others.reduce(function (s, i) { return s + values[i]; }, 0);
+
+            if (sumOthers <= 0) {
+                // 另外两档都为 0 时：各占一半（无法整除时余数给前一档）
+                const half = Math.floor(rest / 2);
+                values[others[0]] = rest - half;
+                values[others[1]] = half;
+            } else {
+                // 按原比例分配，用最大余数法配平，保证合计精确为 100
+                const raw = others.map(function (i) { return values[i] / sumOthers * rest; });
+                const floors = raw.map(function (v) { return Math.floor(v); });
+                let diff = rest - floors.reduce(function (a, b) { return a + b; }, 0);
+                const order = raw.map(function (v, k) { return { k: k, rest: v - floors[k] }; })
+                    .sort(function (a, b) { return b.rest - a.rest; });
+                let p = 0;
+                while (diff > 0 && order.length) {
+                    floors[order[p % order.length].k] += 1;
+                    p++;
+                    diff--;
+                }
+                others.forEach(function (i, k) { values[i] = floors[k]; });
+            }
+            inputs.forEach(function (el, i) { el.value = values[i]; });
         }
+    } else {
+        // 页面初始化：若数据来自旧版本（只有两档），按默认值补齐
+        if (values[2] === undefined || isNaN(values[2])) values[2] = base[2];
+        inputs.forEach(function (el, i) { if (el) el.value = values[i]; });
     }
-    
+
     // 更新显示值
-    document.getElementById('staffRange1Value').textContent = range1 + '%';
-    document.getElementById('staffRange2Value').textContent = range2 + '%';
-    document.getElementById('staffRangeTotal').textContent = '100%';
-    
-    // 总占比始终为100%，所以不需要警告色
-    document.getElementById('staffRangeTotal').className = 'font-medium';
+    document.getElementById('staffRange1Value').textContent = values[0] + '%';
+    document.getElementById('staffRange2Value').textContent = values[1] + '%';
+    document.getElementById('staffRange3Value').textContent = values[2] + '%';
+
+    const total = values[0] + values[1] + values[2];
+    document.getElementById('staffRangeTotal').textContent = total + '%';
+    // 滑块联动时合计恒为 100%，导入异常数据时才可能出现偏差
+    document.getElementById('staffRangeTotal').className = total === 100 ? 'font-medium' : 'font-medium text-red-500';
+}
+
+// 重置参展人员数量范围占比
+function resetStaffRanges() {
+    document.getElementById('staffRange1').value = 60;
+    document.getElementById('staffRange2').value = 30;
+    document.getElementById('staffRange3').value = 10;
+    updateStaffRangePercentages();
 }
 
 // 更新知名度提升百分比的函数
