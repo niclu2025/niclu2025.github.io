@@ -742,6 +742,16 @@
                     <p class="text-xs text-gray-400 mt-2">设置后，总计行将显示原始值和乘以倍数后的值</p>
                 </div>
                 
+                <!-- 展会展览总面积限制 -->
+                <div class="border border-gray-100 rounded-lg p-4 mb-4 mt-4">
+                    <label for="exhibitionTotalArea" class="block text-sm font-medium text-gray-700 mb-1.5">展会展览总面积 (平方米)</label>
+                    <input type="number" id="exhibitionTotalArea" value="100000" min="0" step="100" placeholder="留空或填 0 表示不限制"
+                        class="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all outline-none"
+                        oninput="updateExhibitionAreaHint()">
+                    <p class="text-xs text-gray-400 mt-2">限制规则：参展商面积合计 × 倍数 不得超过此面积，超出时自动下调倍数（倍数为 1 倍时自动压缩展位面积）</p>
+                    <div id="exhibitionAreaHint" class="mt-2 text-xs rounded-lg p-2.5 bg-gray-50 text-gray-500">未设置总面积限制</div>
+                </div>
+                
                 <!-- 操作按钮（固定在卡片底部） -->
                 <div class="mt-6 space-y-3 sticky bottom-0 bg-white pt-3">
                     <button id="generateBtn" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2.5 px-4 rounded-lg transition-all flex items-center justify-center">
@@ -1157,6 +1167,8 @@
         document.addEventListener('DOMContentLoaded', function() {
             // 全局变量
             let allData = [];
+            // 暴露到 window，供全局函数（倍数/面积限制）读取当前数据
+            window.allData = allData;
             let currentPage = 1;
             const itemsPerPage = 10;
             let areaRatioRules = [];
@@ -1573,8 +1585,14 @@
                             expectedSales: 0
                         });
                         
-                        // 获取倍数设置
-                        const multiplier = parseInt(document.getElementById('totalMultiplier').value) || 1;
+                        // 获取倍数设置（受展会展览总面积约束）
+                        const requestedMultiplier = parseInt(document.getElementById('totalMultiplier').value) || 1;
+                        const multiplier = getAreaLimitedMultiplier(totals.area, requestedMultiplier);
+                        if (multiplier < requestedMultiplier) {
+                            // 超限时把滑块同步下调，界面与实际生效倍数保持一致
+                            document.getElementById('totalMultiplier').value = multiplier;
+                            document.getElementById('totalMultiplierValue').textContent = multiplier + '倍';
+                        }
                         
                         const totalRow = document.createElement('tr');
                         totalRow.className = 'bg-primary text-white font-semibold';
@@ -1720,8 +1738,13 @@
                         expectedSales: 0
                     });
                     
-                    // 获取倍数设置
-                    const multiplier = parseInt(document.getElementById('totalMultiplier').value) || 1;
+                    // 获取倍数设置（受展会展览总面积约束）
+                    const requestedMultiplier = parseInt(document.getElementById('totalMultiplier').value) || 1;
+                    const multiplier = getAreaLimitedMultiplier(totals.area, requestedMultiplier);
+                    if (multiplier < requestedMultiplier) {
+                        document.getElementById('totalMultiplier').value = multiplier;
+                        document.getElementById('totalMultiplierValue').textContent = multiplier + '倍';
+                    }
                     
                     const totalRow = document.createElement('tr');
                     totalRow.className = 'bg-primary text-white font-semibold';
@@ -1798,6 +1821,9 @@
                         }, '*');
                     } catch(e) {}
                 }
+
+                // 刷新总面积占用提示
+                updateExhibitionAreaHint();
             }
             
             // 生成数据函数
@@ -1894,6 +1920,9 @@ function generateAreaSamples() {
     const minArea = Math.max(parseInt(minAreaInput.value) || 9, 9);
     let maxArea = parseInt(maxAreaInput.value) || 300;
     maxArea = Math.max(maxArea, minArea);
+
+    // 说明：这里不预先压低 maxArea，面积总量由生成后的
+    // enforceExhibitionAreaCap() 统一裁剪，避免"先压上限 + 再按比例压缩"的双重压缩。
 
     // 2. 动态计算每个规则的实际有效区间
     const validAreaRules = [];
@@ -2055,113 +2084,39 @@ function generateAreaSamples() {
     return areaSamples;
 }
 
-        // -------------------------- 区间双向抽样 --------------------------
-        // 目的：让"租赁 / 搭建 / 物流 / 广告"四个支出区间的占比，
-        //       随"面积占比设置"变化而联动（面积档位决定支出基数）。
-        //  ① 正相关：小面积展位支出基数小 → 更可能落在低支出区间；
-        //     大面积展位支出基数大 → 更可能落在高支出区间；
-        //  ② 条件下构成不变：在任一支出区间内部，小/中/大面积档位的构成，
-        //     仍然严格保持"面积占比设置"的比例。即
-        //         P(档位|支出区间) = P(档位) = 面积占比设置
-        //     于是 P(支出区间|档位) 完全由公式确定 —— 这就是"区间比例受面积占比影响"。
-
-        // 面积档位 → 各支出区间的相对倾向权重（0=最低支出区间，3=最高）
-        // 行为：小面积 / 中面积 / 大面积 / 9㎡基础区间
-        // 说明：权重只决定"档位内部往哪个区间倾斜"，不决定最终的区间总量
-        // 整体略作软化（约 90% 概率循档位、10% 随机游走），避免出现 100% / 0% 的极端区间
-        const AREA_LEVEL_SLOT_WEIGHTS = {
-            rentCost:      [[0.88, 0.10, 0.015, 0.005], [0.13, 0.70, 0.155, 0.015], [0.01, 0.14, 0.83, 0.02], [0.90, 0.06, 0.03, 0.01]],
-            setupCost:     [[0.89, 0.095, 0.012, 0.003], [0.14, 0.70, 0.145, 0.015], [0.012, 0.13, 0.84, 0.018], [0.90, 0.06, 0.03, 0.01]],
-            logisticsCost: [[0.86, 0.12, 0.017, 0.003], [0.15, 0.69, 0.145, 0.015], [0.017, 0.16, 0.805, 0.018], [0.90, 0.06, 0.03, 0.01]],
-            adCost:        [[0.84, 0.14, 0.017, 0.003], [0.16, 0.68, 0.145, 0.015], [0.02, 0.18, 0.782, 0.018], [0.90, 0.06, 0.03, 0.01]]
-        };
-
-        // 构造某个支出字段的抽样表：
-        //   slotProb[s]        = 该支出区间占总数的比例（由面积占比设置加权后得出）
-        //   table[s][level]    = 该支出区间内各面积档位的构成比例（= P(档位)，即面积占比）
-        //   inv[level][s]      = 累积分布，用于"给定面积档位 → 抽哪个支出区间"
-        function buildCostPools(key) {
-            const values = allData.map(function (d) { return Math.round(d[key]); });
-            if (!values.length) return;
-
-            const analysis = buildRangeAnalysis({ key: key, format: 'currency' }, values);
-
-            // 各面积档位的实际占比（即用户在"面积占比设置"里拖出来的比例）
-            const levelShare = [0, 0, 0, 0];
-            let levelTotal = 0;
-            seatLevels.forEach(function (lv) {
-                if (lv >= 0 && lv < 4) { levelShare[lv] += 1; levelTotal += 1; }
-            });
-            for (let lv = 0; lv < 4; lv++) {
-                levelShare[lv] = levelTotal ? levelShare[lv] / levelTotal : 0;
-            }
-
-            const weights = AREA_LEVEL_SLOT_WEIGHTS[key] || AREA_LEVEL_SLOT_WEIGHTS.rentCost;
-
-            // ① 某档位在各区间上的分布（按权重归一化）
-            const slotGivenLevel = [0, 1, 2, 3].map(function (lv) {
-                const row = weights[lv].slice();
-                const sum = row.reduce(function (a, b) { return a + b; }, 0) || 1;
-                return row.map(function (w) { return w / sum; });
-            });
-
-            // ② 各支出区间的总量占比 = Σ 档位占比 × 档位在各区间的分布
-            //    —— 面积占比一变，这里立即跟着变
-            const slotProb = [0, 0, 0, 0];
-            for (let s = 0; s < 4; s++) {
-                let p = 0;
-                for (let lv = 0; lv < 4; lv++) p += levelShare[lv] * slotGivenLevel[lv][s];
-                slotProb[s] = p;
-            }
-
-            // ③ 各区间内的档位构成（固定为面积占比，保证"区间内结构"不被扭曲）
-            const table = [0, 1, 2, 3].map(function () { return levelShare.slice(); });
-
-            // ④ 给定档位 → 区间 的累积分布
-            const inv = [0, 1, 2, 3].map(function (lv) {
-                let acc = 0;
-                return slotGivenLevel[lv].map(function (p) { return (acc += p); });
-            });
-
-            // ⑤ 候选值池：各区间内取一组逼近区间中值的候选值
-            const pools = analysis.ranges.map(function (r) {
-                const mid = Math.round((r.start + r.end) / 2);
-                const spread = Math.max(1, Math.round((r.end - r.start) / 6));
-                const arr = [];
-                for (let k = -3; k <= 3; k++) arr.push(Math.max(0, mid + k * spread));
-                return arr.sort(function (a, b) { return a - b; });
-            });
-
-            costPools[key] = {
-                slotProb: slotProb,
-                table: table,
-                inv: inv,
-                pools: pools,
-                ranges: analysis.ranges
-            };
-        }
-
-        // 给定面积档位，抽取该展位的支出值：
-        // 先按"面积占比 → 支出区间"的条件分布定区间，再在区间内均匀取候选值
-        function sampleByLevel(key, level, fallback) {
-            const data = costPools[key];
-            if (!data) return fallback;
+        // -------------------------- 租赁支出：受面积驱动 --------------------------
+        // 核心原则：租赁支出 = 展位面积 × 单价
+        //   ① 面积决定量级：面积越大，租赁支出必然越高（不会出现大面积反而便宜）
+        //   ② 单价落在用户设定的 [minRentPrice, maxRentPrice] 区间内，绝不越界
+        //   ③ 档位影响单价所处分位：小面积偏低、大面积偏高，使"支出区间分布"随面积占比联动
+        //   ④ 档位之间单价区间不重叠，且同档内单价随面积微升 → 跨档不倒挂
+        function sampleRentByArea(area, level) {
             const lv = (level >= 0 && level < 4) ? level : 3;
-            const cum = data.inv[lv];
-            if (!cum) return fallback;
-            const r = Math.random();
-            let slot = 3;
-            for (let s = 0; s < 4; s++) {
-                if (r <= cum[s]) { slot = s; break; }
-            }
-            const pool = data.pools[slot];
-            if (!pool || !pool.length) return fallback;
-            return pool[Math.floor(Math.random() * pool.length)];
+            const lo = Math.min(minRentPrice, maxRentPrice);
+            const hi = Math.max(minRentPrice, maxRentPrice);
+            const span = Math.max(0, hi - lo);
+
+            // 档位 → 单价所处分位区间（区间之间留少量重叠，供同档内浮动）
+            const LEVEL_BAND = [
+                [0.00, 0.38],   // 0 小面积
+                [0.32, 0.66],   // 1 中面积
+                [0.60, 1.00],   // 2 大面积
+                [0.08, 0.46]    // 3 9㎡基础区间
+            ];
+            // 同档内按面积相对位置轻微上浮（最多 +0.06），让大面积单价不低于同档小面积
+            const areaT = Math.min(1, Math.log(Math.max(area, 9) / 9) / Math.log(360 / 9));
+            const spread = 0.06 * areaT;
+
+            const band = LEVEL_BAND[lv];
+            const pos = Math.min(1, band[0] + Math.random() * (band[1] - band[0]) + spread);
+
+            const unitPrice = lo + span * pos;
+            return Math.max(1, Math.round(area * unitPrice));
         }
-        // -------------------------- 区间双向抽样结束 --------------------------
+        // -------------------------- 租赁支出：受面积驱动 结束 --------------------------
 // -------------------------- 动态面积占比控制结束 --------------------------
-                // 清空现有数据
-allData = [];
+                // 清空现有数据（保持数组引用不变，确保 window.allData 同步可见）
+allData.length = 0;
 
 let totalCost = 0;
 let totalArea = 0;
@@ -2189,6 +2144,61 @@ if (customCategoriesInput && customCategoriesInput.value.trim()) {
 // 首先生成符合占比规则的面积样本数组
 const areaSamples = generateAreaSamples();
 
+// ===== 总面积二次兜底：若样本合计面积 × 倍数 > 展览总面积，则压缩展位面积 =====
+// 压缩规则：按比例缩放并取整到 9㎡ 的倍数（最小 9㎡），迭代直到满足上限
+// 说明：压缩会同时按新面积回写档位，保证后续支出区间抽样与面积档位一致
+(function enforceExhibitionAreaCap() {
+    const limit = getExhibitionTotalAreaLimit();
+    if (!limit || areaSamples.length === 0) return;
+    const multiplier = Math.max(1, parseInt(document.getElementById('totalMultiplier').value) || 1);
+    const budget = limit / multiplier; // 原始数据允许占用的面积
+
+    let total = areaSamples.reduce((s, a) => s + a, 0);
+    if (total <= budget) return;
+
+    // 按面积反查档位（与 generateAreaSamples 内部口径一致）
+    function levelOfArea(a) {
+        for (let i = 0; i < areaRatioRules.length; i++) {
+            const r = areaRatioRules[i];
+            if (a >= r.min && a <= r.max && r.level !== undefined) return r.level;
+        }
+        return 3;
+    }
+
+    let guard = 0;
+    while (total > budget && guard < 50) {
+        guard++;
+        const factor = (budget / total) * 0.995; // 留 0.5% 余量避免取整后再次越界
+        for (let i = 0; i < areaSamples.length; i++) {
+            const scaled = Math.floor((areaSamples[i] * factor) / 9) * 9;
+            areaSamples[i] = Math.max(9, scaled);
+        }
+        total = areaSamples.reduce((s, a) => s + a, 0);
+        if (areaSamples.every(a => a === 9)) break; // 已全部为最小 9㎡，无法再压缩
+    }
+
+    // 若按比例缩放后仍未达标（取整导致），从最大展位逐个下调 9㎡，直至满足上限
+    guard = 0;
+    while (total > budget && guard < areaSamples.length * 60) {
+        guard++;
+        // 找到当前面积最大的展位
+        let maxIdx = -1, maxVal = -1;
+        for (let i = 0; i < areaSamples.length; i++) {
+            if (areaSamples[i] > maxVal) { maxVal = areaSamples[i]; maxIdx = i; }
+        }
+        if (maxIdx < 0 || maxVal <= 9) break; // 已无可下调空间
+        areaSamples[maxIdx] -= 9;
+        total -= 9;
+    }
+
+    // 同步档位
+    if (generateAreaSamples.lastLevels) {
+        for (let i = 0; i < areaSamples.length; i++) {
+            generateAreaSamples.lastLevels[i] = levelOfArea(areaSamples[i]);
+        }
+    }
+})();
+
 // 记录每个展位的面积档位（0=小面积 1=中面积 2=大面积 3=9㎡基础区间）
 const seatLevels = [];
 if (generateAreaSamples.lastLevels && generateAreaSamples.lastLevels.length) {
@@ -2196,9 +2206,6 @@ if (generateAreaSamples.lastLevels && generateAreaSamples.lastLevels.length) {
         seatLevels.push(generateAreaSamples.lastLevels[i] === undefined ? 3 : generateAreaSamples.lastLevels[i]);
     }
 }
-
-// 占位：后续按面积档位构造各支出字段的候选值池
-const costPools = {};
 
 for (let i = 0; i < exhibitorCount; i++) {
     // 使用预先生成的面积样本，确保按照设定的概率分布和允许重复
@@ -2255,9 +2262,9 @@ for (let i = 0; i < exhibitorCount; i++) {
         staff = pickStaffByRatio();
     }
     
-    // 修改：从范围中随机选择租赁单价
-    const rentPrice = minRentPrice + Math.random() * (maxRentPrice - minRentPrice);
-    let rentCost = Math.round(area * rentPrice);
+    // 租赁支出与搭建/物流/广告：第二轮统一按"面积 × 单价"重算，
+    // 这里先给占位值，避免第一轮产生与面积脱钩的金额被中间步骤误用
+    let rentCost = Math.round(area * (Math.min(minRentPrice, maxRentPrice)));
     
     // 修改：从范围中随机选择百分比
     const setupPercentage = minSetupPercentage + Math.random() * (maxSetupPercentage - minSetupPercentage);
@@ -2371,21 +2378,27 @@ if (i < 4 && firstFourRowsPreset[i]) {
                     totalVisitors += visitors;
                 }
 
-                // ---------------- 第二轮：按面积档位重抽四个支出字段 ----------------
-                // 目的：让租赁 / 搭建 / 物流 / 广告四个支出区间的占比，
-                //       随"面积占比设置"联动（小面积多的展会，低支出区间占比自然更高）
-                ['rentCost', 'setupCost', 'logisticsCost', 'adCost'].forEach(function (key) {
-                    buildCostPools(key);
-                });
-
+                // ---------------- 第二轮：租赁支出受面积驱动，其余支出按比例联动 ----------------
+                // 设计说明：
+                //   租赁支出 = 展位面积 × 单价（单价在用户设定范围内，档位影响所处分位）
+                //   → 面积越大，租赁支出必然越高，杜绝"大面积反而便宜"的错乱
+                //   搭建 / 物流 / 广告 = 租赁支出 × 各自百分比（沿用比例设置）
+                //   → 三者与租赁支出同向变动，且保持在设定的百分比区间内
                 let secondTotalCost = 0;
                 let secondRent = 0, secondSetup = 0, secondLogistics = 0, secondAd = 0;
                 allData.forEach(function (row, i) {
                     const lv = seatLevels[i] === undefined ? 3 : seatLevels[i];
-                    row.rentCost = sampleByLevel('rentCost', lv, row.rentCost);
-                    row.setupCost = sampleByLevel('setupCost', lv, row.setupCost);
-                    row.logisticsCost = sampleByLevel('logisticsCost', lv, row.logisticsCost);
-                    row.adCost = sampleByLevel('adCost', lv, row.adCost);
+
+                    // ① 租赁支出：面积 × 单价（面积是量的基础，不可被随机数覆盖）
+                    row.rentCost = sampleRentByArea(row.area, lv);
+
+                    // ② 搭建 / 物流 / 广告：按租赁支出的百分比重新计算，保证比例合理
+                    const setupPct = minSetupPercentage + Math.random() * (maxSetupPercentage - minSetupPercentage);
+                    const logisticsPct = minLogisticsPercentage + Math.random() * (maxLogisticsPercentage - minLogisticsPercentage);
+                    const adPct = minAdPercentage + Math.random() * (maxAdPercentage - minAdPercentage);
+                    row.setupCost = Math.round(row.rentCost * setupPct);
+                    row.logisticsCost = Math.round(row.rentCost * logisticsPct);
+                    row.adCost = Math.round(row.rentCost * adPct);
 
                     secondRent += row.rentCost;
                     secondSetup += row.setupCost;
@@ -2421,6 +2434,9 @@ if (i < 4 && firstFourRowsPreset[i]) {
                 // 渲染表格
                 currentPage = 1; // 重置到第一页
                 renderTable();
+
+                // 刷新总面积占用提示
+                updateExhibitionAreaHint();
             }
 
             // 更新图表函数
@@ -2771,14 +2787,49 @@ function buildRangeAnalysis(field, values) {
     const max = Math.max.apply(null, values);
     const range = max - min;
 
+    // 根据"每段宽度"选择整齐步长
+    // 大跨度走 5-10-20-50-100... 序列；小跨度（段宽 < 5）退回 1/2，避免边界挤在一起
+    function pickNiceStep(span) {
+        if (span <= 1) return 1;
+        if (span < 2.5) return 1;
+        if (span < 5) return 2;
+        const candidates = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+        let best = 5;
+        for (let i = 0; i < candidates.length; i++) {
+            if (candidates[i] <= span) best = candidates[i];
+            else break;
+        }
+        if (span > candidates[candidates.length - 1]) {
+            let s = 10000;
+            while (s * 10 <= span) s *= 10;
+            best = s;
+        }
+        return best;
+    }
+
     // 1) 计算 4 段区间的上界
+    //    优雅取整：边界取整齐值（104→100、152→150、56→55 这一档）
+    //    做法：段宽固定为整齐步长的整数倍，边界落在"起点 + k×段宽"上
     const upper = [];
+
     if (field.noRounding) {
-        // 面积、人员：自然区间，不取整
-        const interval = Math.max(1, Math.ceil(range / 4));
+        // 面积、人员：边界落在"整齐刻度"上（step 的整数倍）
+        // 中间边界就近对齐；末段用真实最大值（若已整齐则直接用，否则向上取整到整齐值）
+        const step = pickNiceStep(range / 4);
+        // 末段上界：只有 max 已经很接近整齐刻度（差 ≤ step 的 10%）时才上取整，
+        // 否则保留真实最大值，避免把区间无意拉宽
+        const niceCeil = Math.ceil(max / step) * step;
+        const tailCap = (niceCeil - max) <= step * 0.1 ? niceCeil : max;
         for (let i = 0; i < 4; i++) {
-            let u = (i === 3) ? max : min + (i + 1) * interval - 1;
-            if (u > max) u = max;
+            if (i === 3) { upper.push(tailCap); continue; }
+            const ideal = min + (i + 1) * (range / 4);
+            let u = Math.round(ideal / step) * step;
+            const prev = (i === 0) ? min : upper[i - 1];
+            // 必须大于上一段上界，保持递增
+            if (u <= prev) u = (Math.floor(prev / step) + 1) * step;
+            // 不要吃掉最后一段
+            if (u >= tailCap) u = tailCap - step;
+            if (u <= prev) u = prev + 1;
             upper.push(u);
         }
     } else {
@@ -2792,17 +2843,26 @@ function buildRangeAnalysis(field, values) {
         const interval = Math.max(baseInterval, Math.ceil(range / 4 / baseInterval) * baseInterval);
         const adjustedMin = Math.floor(min / baseInterval) * baseInterval;
         for (let i = 0; i < 4; i++) {
-            let u = (i === 3) ? max : adjustedMin + (i + 1) * interval;
-            if (u > max) u = max;
-            if (u < min) u = min;
+            let u;
+            if (i === 3) {
+                // 末段上界：向上取整到整齐刻度，且必容纳真实最大值
+                u = Math.ceil(max / baseInterval) * baseInterval;
+                if (u < max) u = max;
+                if (u <= upper[i - 1]) u = upper[i - 1] + baseInterval;
+            } else {
+                u = adjustedMin + (i + 1) * interval;
+                if (u > max) u = max;
+                if (u < min) u = min;
+            }
             upper.push(u);
         }
     }
-    // 上界必须单调不减，避免出现空档或倒挂
+    // 上界必须单调递增，避免出现空档或倒挂
     for (let i = 1; i < 4; i++) {
-        if (upper[i] < upper[i - 1]) upper[i] = upper[i - 1];
+        if (upper[i] <= upper[i - 1]) upper[i] = upper[i - 1] + 1;
     }
-    upper[3] = max;
+    // 末段上界必须 ≥ 真实最大值，避免最大值被挤到区间外
+    if (upper[3] < max) upper[3] = max;
 
     // 2) 互斥计数：数据点落入"第一个能容纳它"的区间
     const counts = [0, 0, 0, 0];
@@ -2815,14 +2875,15 @@ function buildRangeAnalysis(field, values) {
     // 3) 占比配平，合计精确 100.0%
     const percentages = distributePercentages(counts, n, 1);
 
-    // 4) 组装区间（中间区间起点 = 上一区间上界 + 1）
+    // 4) 组装区间
+    //    upper 已按整齐步长算出，展示与计数共用同一套边界，
+    //    保证"区间范围"与"家数"完全对应。
+    //    首段从真实最小值起，末段上界为该字段的整齐上界（≥ 真实最大值）。
     const ranges = [];
     for (let i = 0; i < 4; i++) {
-        let start = (i === 0) ? min : upper[i - 1] + 1;
-        if (start > max) start = max;
+        let start = (i === 0) ? min : upper[i - 1];
         let end = upper[i];
         if (end < start) end = start;
-        if (end > max) end = max;
         ranges.push({
             start: start,
             end: end,
@@ -3155,6 +3216,13 @@ function generateRangeAnalysis() {
         container.appendChild(fieldContainer);
     });
 }
+
+            // ===== 把闭包内的核心函数暴露到 window =====
+            // 供全局函数（倍数调整、面积限制提示、初始化）跨作用域调用
+            window.renderTable = renderTable;
+            window.generateData = generateData;
+            window.getFilteredData = getFilteredData;
+            window.updateAreaRangeLabels = updateAreaRangeLabels;
         });
     </script>
     <script>
@@ -3323,13 +3391,84 @@ function updateNewClientsPercentages() {
 
 // 更新总计倍数显示
 function updateTotalMultiplier() {
-    const multiplier = document.getElementById('totalMultiplier').value;
+    const slider = document.getElementById('totalMultiplier');
+    const requested = parseInt(slider.value) || 1;
+
+    // 面积约束：拉大倍数导致"面积 × 倍数"超限时，自动回落到允许的最大倍数
+    if (window.allData && window.allData.length > 0) {
+        const rawArea = window.allData.reduce((sum, item) => sum + (Number(item.area) || 0), 0);
+        const allowed = getAreaLimitedMultiplier(rawArea, requested);
+        if (allowed < requested) {
+            slider.value = allowed;
+            const limit = getExhibitionTotalAreaLimit();
+            const used = rawArea * allowed;
+            alert(`已超出展会展览总面积限制！\n\n原始面积合计：${rawArea.toLocaleString()} ㎡\n展览总面积上限：${limit.toLocaleString()} ㎡\n\n倍数已自动调整为最大可用的 ${allowed} 倍（占用 ${used.toLocaleString()} ㎡）。`);
+        }
+    }
+
+    const multiplier = parseInt(slider.value) || 1;
     document.getElementById('totalMultiplierValue').textContent = multiplier + '倍';
+    updateExhibitionAreaHint();
     // 如果已有数据，重新渲染表格以应用新倍数
-    if (window.generatedData && window.generatedData.length > 0) {
-        renderTable();
+    if (window.allData && window.allData.length > 0 && typeof window.renderTable === 'function') {
+        window.renderTable();
     }
 }
+
+/* ===================== 展会展览总面积限制 ===================== */
+// 读取用户设置的展会展览总面积（返回 0 表示不限制）
+function getExhibitionTotalAreaLimit() {
+    const el = document.getElementById('exhibitionTotalArea');
+    if (!el) return 0;
+    const v = parseFloat(el.value);
+    return (isFinite(v) && v > 0) ? v : 0;
+}
+
+// 计算"当前数据 × 倍数"占用的面积
+function getMultipliedTotalArea() {
+    const data = window.allData;
+    if (!data || data.length === 0) return 0;
+    const rawArea = data.reduce((sum, item) => sum + (Number(item.area) || 0), 0);
+    const multiplier = parseInt(document.getElementById('totalMultiplier').value) || 1;
+    return rawArea * multiplier;
+}
+
+// 面积占用提示：实时显示 倍数后面积 / 总面积，超限时标红
+function updateExhibitionAreaHint() {
+    const hint = document.getElementById('exhibitionAreaHint');
+    if (!hint) return;
+    const limit = getExhibitionTotalAreaLimit();
+    const multiplier = parseInt(document.getElementById('totalMultiplier').value) || 1;
+    const used = getMultipliedTotalArea();
+
+    if (!limit) {
+        hint.className = 'mt-2 text-xs rounded-lg p-2.5 bg-gray-50 text-gray-500';
+        hint.textContent = '未设置总面积限制';
+        return;
+    }
+    if (!used) {
+        hint.className = 'mt-2 text-xs rounded-lg p-2.5 bg-primary-light text-primary';
+        hint.textContent = `总面积上限 ${limit.toLocaleString()} ㎡（生成数据后显示面积占用情况）`;
+        return;
+    }
+    const over = used > limit;
+    const percent = limit > 0 ? (used / limit * 100) : 0;
+    hint.className = over
+        ? 'mt-2 text-xs rounded-lg p-2.5 bg-red-50 text-red-600'
+        : 'mt-2 text-xs rounded-lg p-2.5 bg-green-50 text-green-700';
+    hint.innerHTML = `当前 ×${multiplier} 倍面积：<span class="font-semibold">${Math.round(used).toLocaleString()}</span> ㎡ / 上限 ${limit.toLocaleString()} ㎡（${percent.toFixed(1)}%）`
+        + (over ? '　<span class="font-semibold">⚠ 已超出，倍数或面积将被自动下调</span>' : '');
+}
+
+// 计算在总展览面积约束下的可用倍数（返回整数，最小为 1）
+function getAreaLimitedMultiplier(rawArea, requestedMultiplier) {
+    const limit = getExhibitionTotalAreaLimit();
+    const req = Math.max(1, parseInt(requestedMultiplier) || 1);
+    if (!limit || rawArea <= 0) return req;
+    const maxByArea = Math.floor(limit / rawArea);
+    return Math.max(1, Math.min(req, maxByArea));
+}
+/* ===================== 总面积限制结束 ===================== */
 
 // 更新面积占比的函数
 function updateAreaRatios() {
@@ -3357,7 +3496,7 @@ function updateAreaRatios() {
     document.getElementById('areaRatioTotal').textContent = '100%';
     
     // 更新面积区间标签
-    updateAreaRangeLabels();
+    if (typeof window.updateAreaRangeLabels === 'function') window.updateAreaRangeLabels();
 }
 
 // 初始化页面时调用一次函数以确保显示正确的值
@@ -3368,6 +3507,7 @@ window.addEventListener('load', function() {
     updateNewMarketPercentages();
     updateNewClientsPercentages();
     updateAreaRatios();
+    updateExhibitionAreaHint();
 });
 </script>
 </body>
